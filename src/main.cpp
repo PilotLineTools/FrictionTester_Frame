@@ -19,6 +19,8 @@
 #include "version.h"
 #include <TMCStepper.h>
 #include <HardwareSerial.h>
+#include <Wire.h>
+#include "INA219.h"
 #include <esp32-hal-cpu.h>
 #if POWER_SAVE_WIFI_OFF
 #include <WiFi.h>
@@ -28,91 +30,8 @@
 // Forward declarations (implementations below)
 // ---------------------------------------------------------------------------
 void serialEvent(void);
-int updatePotFilter(void);
-void clearNVS(void);
 
-// ---------------------------------------------------------------------------
-// LED pattern: table-driven (level, duration_ms). Easy to add modes later.
-// ---------------------------------------------------------------------------
-typedef struct
-{
-   uint8_t level;    // 0 = off, 1 = on
-   uint16_t dur_ms;
-} LedPhase;
 
-enum LedMode
-{
-   LED_MODE_OFF,            // LED off (e.g. while holding START when idle)
-   LED_MODE_STANDBY,        // one blip every 3 s (idle, low)
-   LED_MODE_STANDBY_DOUBLE, // two blips every 3 s (idle, high)
-   LED_MODE_STANDBY_TRIPLE, // three blips every 3 s (idle, ultra)
-   LED_MODE_RUNNING,        // one pulse per second (motor running, low)
-   LED_MODE_RUNNING_DOUBLE, // two blips per second (motor running, high)
-   LED_MODE_RUNNING_TRIPLE  // three blips per second (motor running or mode select, ultra)
-};
-
-// Speed range: low 0–90, high 0–900, ultra 100–5000 RPM. Hold START when idle to cycle.
-enum SpeedMode
-{
-   SPEED_MODE_LOW,   // 0–90 RPM
-   SPEED_MODE_HIGH,  // 0–900 RPM
-   SPEED_MODE_ULTRA  // pot 1=100 RPM, pot 9=5000 RPM
-};
-
-static const LedPhase pattern_off[] = {
-   { 0, 60000 }
-};
-static const LedPhase pattern_standby[] = {
-   { 1, 100 },
-   { 0, 2900 }
-};
-static const LedPhase pattern_standby_double[] = {
-   { 1, 100 },
-   { 0, 100 },
-   { 1, 100 },
-   { 0, 2700 }
-};
-static const LedPhase pattern_running[] = {
-   { 1, 100 },
-   { 0, 900 }
-};
-static const LedPhase pattern_double[] = {
-   { 1, 100 },
-   { 0, 100 },
-   { 1, 100 },
-   { 0, 700 }
-};
-static const LedPhase pattern_standby_triple[] = {
-   { 1, 100 }, { 0, 100 }, { 1, 100 }, { 0, 100 }, { 1, 100 }, { 0, 2500 }
-};
-static const LedPhase pattern_triple[] = {
-   { 1, 100 }, { 0, 100 }, { 1, 100 }, { 0, 100 }, { 1, 100 }, { 0, 500 }
-};
-
-static const LedPhase *const led_patterns[] = { pattern_off, pattern_standby, pattern_standby_double, pattern_standby_triple, pattern_running, pattern_double, pattern_triple };
-static const uint8_t led_pattern_len[] = { 1, 2, 4, 6, 2, 4, 6 };
-
-static void updateLedPattern(LedMode mode)
-{
-   static uint8_t phase = 0;
-   static uint32_t phase_start_ms = 0;
-   static LedMode last_mode = LED_MODE_STANDBY;
-   if (mode != last_mode)
-   {
-      last_mode = mode;
-      phase = 0;
-      phase_start_ms = millis();
-   }
-   const LedPhase *p = led_patterns[mode];
-   uint8_t n = led_pattern_len[mode];
-   uint32_t now = millis();
-   if ((uint32_t)(now - phase_start_ms) >= (uint32_t)p[phase].dur_ms)
-   {
-      phase_start_ms = now;
-      phase = (phase + 1) % n;
-   }
-   digitalWrite(LED_BUILTIN_PIN, p[phase].level ? HIGH : LOW);
-}
 
 // ---------------------------------------------------------------------------
 // State and globals
@@ -121,7 +40,6 @@ char swVer[8];
 static int potFiltered = 0;       // Latest filtered ADC; updated in timer3Didtic
 static bool motorOn = false;      // Start button toggles this (motor run when true)
 static float actualRPM = 0.0f;   // Ramped RPM toward target, updated each timer3 tick
-static SpeedMode speedMode = SPEED_MODE_HIGH;  // Low / high / ultra (hold START when idle to cycle)
 volatile bool timer3Didtic = false;
 static const uint32_t TIMER4_IDLE_INTERVAL_US = 10000;  // Idle step interval (µs); must be non-zero or ISR watchdog
 volatile uint32_t timer4value = TIMER4_IDLE_INTERVAL_US;
@@ -182,6 +100,9 @@ void IRAM_ATTR onTimer3()
 {
    timer3Didtic = true;
 }
+
+INA219 ina219(0x45, &Wire);
+
 
 void setup()
 {
@@ -254,7 +175,6 @@ void setup()
    BathConfig.tbl = BATH_TMC_TBL;
    BathConfig.en_spreadcycle = BATH_TMC_EN_SPREADCYCLE;
    
-
    TMC2209_carriageDriver->configure(carriageRmsCurrentMa.value, carriageMicroSteps.value, CARRIAGE_TMC_SGTHRS, CARRIAGE_TMC_RSENSE, CarriageConfig);
    TMC2209_bathDriver->configure(bathRmsCurrentMa.value, bathMicroSteps.value, BATH_TMC_SGTHRS, BATH_TMC_RSENSE, BathConfig);
 
@@ -297,6 +217,19 @@ void setup()
    USBSerial.print("\nbooted up in ");
    USBSerial.print(millis());
    USBSerial.print(" ms\n\n");
+
+   motionController->moveRel(0, 1, 500);
+
+   // Initialize I2C for INA219 on custom pins
+   Wire.begin(CURRENT_SCA_PIN, CURRENT_SCL_PIN);
+
+   // Check INA219 connection
+   if (!ina219.begin()) {
+      USBSerial.println("INA219 not found!");
+   } else {
+      USBSerial.println("INA219 connected!");
+   }
+
 }
 
 
@@ -327,6 +260,8 @@ void loop()
    }
    lastButtonState = buttonState;
 
+   
+
    // Call serialEvent() if there's data available (like Arduino convention)
    if (USBSerial.available())
    {
@@ -339,7 +274,11 @@ void loop()
       motionController->pollAxis();
       timer4value = motionController->updatePositions();
       displayCounter++;
+
+      // LED Power/Mode indication
+      
    }
 
    
 }
+
