@@ -9,7 +9,7 @@
 #define CARRIAGE_DIAG_PIN (GPIO_NUM_3)  // IO3 Diagnostic / StallGuard
 #define CARRIAGE_INVERT_DIRECTION (1)    // Inverts direction
 #define CARRIAGE_ACCEL (1500)             // mm/s^2
-#define CARRIAGE_STEPS_PER_UNIT (53.33)  // Steps per mm
+#define CARRIAGE_STEPS_PER_UNIT (3200)  // Steps per revolution (200 steps/rev for 1.8° motors) divided by mm per revolution (e.g. 4 mm/rev leads to 50 steps/mm)
 #define CARRIAGE_START_SPEED (500)       // mm/min
 #define CARRIAGE_JOG_SPEED (3000)        // mm/min
 
@@ -19,7 +19,7 @@
 #define BATH_DIAG_PIN (GPIO_NUM_37)  // IO37 Diagnostic / StallGuard
 #define BATH_INVERT_DIRECTION (1)    // Inverts direction
 #define BATH_ACCEL (1500)             // mm/s^2
-#define BATH_STEPS_PER_UNIT (53.33)  // Steps per mm
+#define BATH_STEPS_PER_UNIT (200)  // Steps per revolution (200 steps/rev for 1.8° motors) divided by mm per revolution (e.g. 4 mm/rev leads to 50 steps/mm)
 #define BATH_START_SPEED (500)       // mm/min
 #define BATH_JOG_SPEED (3000)        // mm/min
 
@@ -97,13 +97,13 @@ const double initialSpeed = 100;        // Initial speed in steps/sec
 #define CARRIAGE_TMC_ADDRESS (0)  // UART address 0
 #define CARRIAGE_TMC_RSENSE (0.100f)
 #define CARRIAGE_TMC_RMS_CURRENT_MA (800)
-#define CARRIAGE_TMC_MICROSTEPS (256)
+#define CARRIAGE_TMC_MICROSTEPS (16)
 
 // TMC2209 Configuration
 #define BATH_TMC_ADDRESS (1)  // UART address 1
 #define BATH_TMC_RSENSE (0.100f)
 #define BATH_TMC_RMS_CURRENT_MA (800)
-#define BATH_TMC_MICROSTEPS (256)
+#define BATH_TMC_MICROSTEPS (16)
 
 // TMC2209 CHOPCONF MRES (datasheet): MRES 0 = 256 native; MRES 1..8 = 128,64,32,16,8,4,2,1 (2^MRES microsteps per step)
 #define TMC2209_MICROSTEPS_MIN (1)   // FULLSTEP
@@ -131,7 +131,7 @@ const double initialSpeed = 100;        // Initial speed in steps/sec
 // StallGuard threshold (shared)
 #define CARRIAGE_TMC_SGTHRS (20)
 
-#define HEATER_FET_PIN GPIO_NUM_1 // IO39 FET gate for heater (PWM)
+#define HEATER_FET_PIN GPIO_NUM_2 // IO39 FET gate for heater (PWM)
 #define BATH_TEMP_DQ_PIN GPIO_NUM_9 // IO36 1-Wire data for bath temperature sensor (DS18B20)
 
 #define CAN_TX_PIN GPIO_NUM_4  // CAN bus TX

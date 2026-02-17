@@ -218,18 +218,33 @@ void setup()
    USBSerial.print(millis());
    USBSerial.print(" ms\n\n");
 
+   // Test Move the carriage motor by 1 mm at 500 mm/min (8.33 mm/s)
    motionController->moveRel(0, 1, 500);
+
+   //Test Move the bath motor by 1 mm at 500 mm/min (8.33 mm/s)
+   motionController->moveRel(1, 1, 500);
 
    // Initialize I2C for INA219 on custom pins
    Wire.begin(CURRENT_SCA_PIN, CURRENT_SCL_PIN);
+
+   
+   digitalWrite(HEATER_FET_PIN, LOW); // Turn on heater for testing (remove or set LOW in production)
+   //delay(100); // Wait for heater to stabilize (for testing)
 
    // Check INA219 connection
    if (!ina219.begin()) {
       USBSerial.println("INA219 not found!");
    } else {
       USBSerial.println("INA219 connected!");
+      float shuntVoltage = ina219.getShuntVoltage_mV();
+      float busVoltage = ina219.getBusVoltage_mV();
+      float current_mA = ina219.getCurrent_mA();
+      USBSerial.printf("Shunt Voltage: %.2f mV\n", shuntVoltage);
+      USBSerial.printf("Bus Voltage: %.2f mV\n", busVoltage);
+      USBSerial.printf("Current: %.2f mA\n", current_mA);
    }
 
+   
 }
 
 
@@ -251,10 +266,12 @@ void loop()
       if (powerLatched)
       {
          digitalWrite(LED_BUILTIN_PIN, HIGH); // LED on when power on
+         digitalWrite(HEATER_FET_PIN, HIGH); // Ensure heater is on until needed (remove or set HIGH in production)
       }
       else
       {
          digitalWrite(LED_BUILTIN_PIN, LOW); // LED off when power off
+         digitalWrite(HEATER_FET_PIN, LOW); // Ensure heater is off when power is cut
       }
 
    }
@@ -277,6 +294,12 @@ void loop()
 
       // LED Power/Mode indication
       
+   }
+
+   
+   if (millis() > 8000)
+   {
+      digitalWrite(HEATER_FET_PIN, LOW); // Turn off heater after testing (remove or set LOW in production)
    }
 
    
