@@ -217,7 +217,7 @@ void setup()
    bathTpwmThrs.init();
    bathAccelRpmPerSec.init();
    
-   pinMode(POWER_BUTTON_SIGNAL, INPUT_PULLUP);       
+   pinMode(POWER_BUTTON_SIGNAL, INPUT);       
    pinMode(GUI_SHUTDOWN_PIN, INPUT_PULLUP); 
 
    pinMode(POWER_HOLD_PIN, OUTPUT);
@@ -304,6 +304,29 @@ void loop()
 {
    static uint8_t displayCounter;
 
+   // --- Power button logic with ON/OFF toggle ---
+   static bool powerLatched = false;
+   static bool lastButtonState = HIGH;
+   bool buttonState = digitalRead(POWER_BUTTON_SIGNAL);
+
+   // Detect button press (falling edge)
+   if (lastButtonState == HIGH && buttonState == LOW)
+   {
+      powerLatched = !powerLatched;
+      digitalWrite(POWER_HOLD_PIN, powerLatched ? HIGH : LOW);
+      USBSerial.printf("Power %s\n", powerLatched ? "latched ON" : "unlatched OFF");
+      if (powerLatched)
+      {
+         digitalWrite(LED_BUILTIN_PIN, HIGH); // LED on when power on
+      }
+      else
+      {
+         digitalWrite(LED_BUILTIN_PIN, LOW); // LED off when power off
+      }
+
+   }
+   lastButtonState = buttonState;
+
    // Call serialEvent() if there's data available (like Arduino convention)
    if (USBSerial.available())
    {
@@ -315,15 +338,8 @@ void loop()
       timer3Didtic = false;
       motionController->pollAxis();
       timer4value = motionController->updatePositions();
-      
       displayCounter++;
-
    }
 
-   if (displayCounter >= DISPLAY_SLOWER)
-   {
-      displayCounter = 0;
-      digitalWrite(LED_BUILTIN_PIN, !digitalRead(LED_BUILTIN_PIN)); // LED on when updating display (brief flash)
-    
-   }
+   
 }
