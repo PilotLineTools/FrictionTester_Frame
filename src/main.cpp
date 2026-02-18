@@ -25,6 +25,8 @@
 #if POWER_SAVE_WIFI_OFF
 #include <WiFi.h>
 #endif
+#include <OneWire.h>
+#include <DallasTemperature.h>
 
 // ---------------------------------------------------------------------------
 // Forward declarations (implementations below)
@@ -102,6 +104,8 @@ void IRAM_ATTR onTimer3()
 }
 
 INA219 ina219(0x45, &Wire);
+OneWire oneWireBath(BATH_TEMP_DQ_PIN);
+DallasTemperature bathTempSensor(&oneWireBath);
 
 
 void setup()
@@ -142,6 +146,7 @@ void setup()
    pinMode(GUI_SHUTDOWN_PIN, INPUT_PULLUP); 
 
    pinMode(POWER_HOLD_PIN, OUTPUT);
+   digitalWrite(POWER_HOLD_PIN, LOW);
    pinMode(HEATER_FET_PIN, OUTPUT);
    pinMode(LED_BUILTIN_PIN, OUTPUT);
 
@@ -227,6 +232,15 @@ void setup()
    // Initialize I2C for INA219 on custom pins
    Wire.begin(CURRENT_SCA_PIN, CURRENT_SCL_PIN);
 
+   // Initialize DS18B20 bath temperature sensor (OneWire on BATH_TEMP_DQ_PIN)
+   bathTempSensor.begin();
+   // Use non-blocking conversions; we manage timing in loop()
+   bathTempSensor.setWaitForConversion(false);
+   // Optional: set resolution (9–12 bits). 11-bit ≈ 0.125°C, ~375 ms conversion.
+   bathTempSensor.setResolution(11);
+   // Kick off first conversion so the first read has valid data
+   bathTempSensor.requestTemperatures();
+
    
    digitalWrite(HEATER_FET_PIN, LOW); // Turn on heater for testing (remove or set LOW in production)
    //delay(100); // Wait for heater to stabilize (for testing)
@@ -250,7 +264,8 @@ void setup()
 
 void loop()
 {
-   static uint8_t displayCounter;
+   static uint8_t displayCounter = 0; // how often to update the display
+   static uint8_t tempCounter = 0; // how often to read the temperature
 
    // --- Power button logic with ON/OFF toggle ---
    static bool powerLatched = false;
@@ -267,11 +282,13 @@ void loop()
       {
          digitalWrite(LED_BUILTIN_PIN, HIGH); // LED on when power on
          digitalWrite(HEATER_FET_PIN, HIGH); // Ensure heater is on until needed (remove or set HIGH in production)
+         digitalWrite(POWER_HOLD_PIN, HIGH);
       }
       else
       {
          digitalWrite(LED_BUILTIN_PIN, LOW); // LED off when power off
          digitalWrite(HEATER_FET_PIN, LOW); // Ensure heater is off when power is cut
+         digitalWrite(POWER_HOLD_PIN, LOW);
       }
 
    }
@@ -291,17 +308,38 @@ void loop()
       motionController->pollAxis();
       timer4value = motionController->updatePositions();
       displayCounter++;
+      tempCounter++;
+
+      // timer3Didtic: 10 ms base; DISPLAY_SLOWER groups that into a 100 ms "slow" tick.
+      if (displayCounter >= DISPLAY_SLOWER)
+      {
+         displayCounter = 0;
+
+      }
+
+      if (tempCounter >= 50) // 5 * 100 ms = 500 ms
+      {
+         tempCounter = 0;
+
+         // Every 500 ms: read previous conversion result, then request a new one.
+         float bathTempC = bathTempSensor.getTempCByIndex(0);
+
+         if (bathTempC != DEVICE_DISCONNECTED_C)
+         {
+            USBSerial.printf("Bath Temp: %.1f C\n", bathTempC);
+         }
+         else
+         {
+            USBSerial.println("Bath Temp: sensor disconnected");
+         }
+
+         // Start next conversion; returns immediately (non-blocking).
+         bathTempSensor.requestTemperatures();
+      }
 
       // LED Power/Mode indication
       
    }
-
-   
-   if (millis() > 8000)
-   {
-      digitalWrite(HEATER_FET_PIN, LOW); // Turn off heater after testing (remove or set LOW in production)
-   }
-
    
 }
 
