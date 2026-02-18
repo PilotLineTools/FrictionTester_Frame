@@ -249,13 +249,10 @@ void setup()
    if (!ina219.begin()) {
       USBSerial.println("INA219 not found!");
    } else {
-      USBSerial.println("INA219 connected!");
-      float shuntVoltage = ina219.getShuntVoltage_mV();
-      float busVoltage = ina219.getBusVoltage_mV();
-      float current_mA = ina219.getCurrent_mA();
-      USBSerial.printf("Shunt Voltage: %.2f mV\n", shuntVoltage);
-      USBSerial.printf("Bus Voltage: %.2f mV\n", busVoltage);
-      USBSerial.printf("Current: %.2f mA\n", current_mA);
+      USBSerial.println("INA219 connected!");   
+      ina219.setBusVoltageRange(32); // 32V range
+      ina219.setGain(2); // Gain 2 = 320mV range on shunt (default and good for up to ~3.2A with 0.1Ω shunt)
+      ina219.setMaxCurrentShunt(8.0, 0.004); // Max current 8A, shunt 4mΩ (for testing with higher current; adjust for production)
    }
 
    
@@ -276,19 +273,18 @@ void loop()
    if (lastButtonState == HIGH && buttonState == LOW)
    {
       powerLatched = !powerLatched;
-      digitalWrite(POWER_HOLD_PIN, powerLatched ? HIGH : LOW);
       USBSerial.printf("Power %s\n", powerLatched ? "latched ON" : "unlatched OFF");
       if (powerLatched)
       {
          digitalWrite(LED_BUILTIN_PIN, HIGH); // LED on when power on
          digitalWrite(HEATER_FET_PIN, HIGH); // Ensure heater is on until needed (remove or set HIGH in production)
-         digitalWrite(POWER_HOLD_PIN, HIGH);
+         digitalWrite(POWER_HOLD_PIN, HIGH); // Latch power on until next button press
       }
       else
       {
          digitalWrite(LED_BUILTIN_PIN, LOW); // LED off when power off
          digitalWrite(HEATER_FET_PIN, LOW); // Ensure heater is off when power is cut
-         digitalWrite(POWER_HOLD_PIN, LOW);
+         digitalWrite(POWER_HOLD_PIN, LOW); // Cut power (in production, this will actually cut power; in testing it just simulates the button press)
       }
 
    }
@@ -311,10 +307,17 @@ void loop()
       tempCounter++;
 
       // timer3Didtic: 10 ms base; DISPLAY_SLOWER groups that into a 100 ms "slow" tick.
+
       if (displayCounter >= DISPLAY_SLOWER)
       {
          displayCounter = 0;
-
+         float shuntVoltage = ina219.getShuntVoltage_mV();
+         float busVoltage = ina219.getBusVoltage();
+         float current = ina219.getCurrent();
+         USBSerial.printf("Shunt Voltage: %.2f mV\t", shuntVoltage);
+         USBSerial.printf("Bus Voltage: %.2f V\t", busVoltage);
+         USBSerial.printf("Current: %.2f A\n", current);
+         
       }
 
       if (tempCounter >= 50) // 5 * 100 ms = 500 ms
