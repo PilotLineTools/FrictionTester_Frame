@@ -131,7 +131,7 @@ const double initialSpeed = 100;        // Initial speed in steps/sec
 // StallGuard threshold (shared)
 #define CARRIAGE_TMC_SGTHRS (20)
 
-#define HEATER_FET_PIN GPIO_NUM_2 // IO39 FET gate for heater (PWM)
+#define HEATER_FET_PIN GPIO_NUM_1 // IO39 FET gate for heater (PWM)
 #define BATH_TEMP_DQ_PIN GPIO_NUM_9 // IO36 1-Wire data for bath temperature sensor (DS18B20)
 
 #define CAN_TX_PIN GPIO_NUM_4  // CAN bus TX
