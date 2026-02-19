@@ -1,3 +1,6 @@
+#ifndef CONSTANTS_H
+#define CONSTANTS_H
+
 // ============================================================================
 // Stepper Motor Pin Configuration
 // ============================================================================
@@ -131,8 +134,14 @@ const double initialSpeed = 100;        // Initial speed in steps/sec
 // StallGuard threshold (shared)
 #define CARRIAGE_TMC_SGTHRS (20)
 
-#define HEATER_FET_PIN GPIO_NUM_1 // IO39 FET gate for heater (PWM)
-#define BATH_TEMP_DQ_PIN GPIO_NUM_9 // IO36 1-Wire data for bath temperature sensor (DS18B20)
+#define HEATER_FET_PIN GPIO_NUM_1       // FET gate for heater (PWM)
+#define BATH_TEMP_DQ_PIN GPIO_NUM_9    // 1-Wire data for bath temperature sensor (DS18B20)
+#define HEATER_BLOCK_THERMISTOR_PIN GPIO_NUM_13  // ADC-capable pin for heater block NTC thermistor
+
+// Water bath controller limits (tunable; heater shuts down and reports error if exceeded)
+#define WATER_BATH_HEATER_CURRENT_MIN_A (6.0f)   // Below this = fault (e.g. open circuit)
+#define WATER_BATH_HEATER_CURRENT_MAX_A (7.0f)   // Above this = fault (e.g. short)
+#define WATER_BATH_BLOCK_TEMP_MAX_C (45.0f)      // Heater block overtemp limit (°C)
 
 #define CAN_TX_PIN GPIO_NUM_4  // CAN bus TX
 #define CAN_RX_PIN GPIO_NUM_5  // CAN bus RX
@@ -143,3 +152,4 @@ const double initialSpeed = 100;        // Initial speed in steps/sec
 #define CURRENT_SCA_PIN GPIO_NUM_39 // Current Sensor Data (I^2C)
 #define CURRENT_SCL_PIN GPIO_NUM_40 // Current Sensor Clock (I^2C)
 
+#endif // CONSTANTS_H

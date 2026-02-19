@@ -27,7 +27,10 @@
 #endif
 #include <OneWire.h>
 #include <DallasTemperature.h>
-#include "driver/twai.h"  
+#include "driver/twai.h"
+#include "WaterBathController.h"
+#include "WaterBathCanAdapter.h"
+#include "CanRouter.h"
 
 // ---------------------------------------------------------------------------
 // Forward declarations (implementations below)
@@ -40,7 +43,6 @@ void serialEvent(void);
 char swVer[8];
 static int potFiltered = 0;       // Latest filtered ADC; updated in timer3Didtic
 static bool motorOn = false;      // Start button toggles this (motor run when true)
-static float actualRPM = 0.0f;   // Ramped RPM toward target, updated each timer3 tick
 volatile bool timer3Didtic = false;
 static const uint32_t TIMER4_IDLE_INTERVAL_US = 10000;  // Idle step interval (µs); must be non-zero or ISR watchdog
 volatile uint32_t timer4value = TIMER4_IDLE_INTERVAL_US;
@@ -105,7 +107,17 @@ void IRAM_ATTR onTimer3()
 INA219 ina219(0x45, &Wire);
 OneWire oneWireBath(BATH_TEMP_DQ_PIN);
 DallasTemperature bathTempSensor(&oneWireBath);
+WaterBathController waterBathController(HEATER_FET_PIN, &bathTempSensor, &ina219, HEATER_BLOCK_THERMISTOR_PIN);
+CanRouter canRouter;
+WaterBathCanAdapter waterBathCanAdapter(&waterBathController, &canRouter);
 
+static void setCirculatorRpm(float rpm)
+{
+   if (TMC2209_bathDriver != nullptr)
+      TMC2209_bathDriver->setRpmActual(rpm);
+   if (bathMotor != nullptr)
+      (rpm > 0.0f) ? bathMotor->enable() : bathMotor->disable();
+}
 
 void setup()
 {
@@ -239,10 +251,6 @@ void setup()
    // Kick off first conversion so the first read has valid data
    bathTempSensor.requestTemperatures();
 
-   
-   digitalWrite(HEATER_FET_PIN, LOW); // Turn on heater for testing (remove or set LOW in production)
-   //delay(100); // Wait for heater to stabilize (for testing)
-
    // Check INA219 connection
    if (!ina219.begin()) {
       USBSerial.println("INA219 not found!");
@@ -253,9 +261,13 @@ void setup()
       ina219.setMaxCurrentShunt(8.0, 0.004); // Max current 8A, shunt 4mΩ (for testing with higher current; adjust for production)
    }
 
-   float actualRPM = 100.0f;
+   // Water bath controller: PID bath temp, heater current and block overtemp protection
+   waterBathController.init();
+   waterBathController.setCirculatorRpmCallback(setCirculatorRpm);
+   waterBathController.setTargetTemp(50.0f);  // default target °C
 
-   TMC2209_bathDriver->setRpmActual(actualRPM);
+   waterBathCanAdapter.setCirculatorRpmCallback(setCirculatorRpm);
+   waterBathCanAdapter.begin();
 
    // --- TWAI (CAN) Configuration ---
    twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(CAN_TX_PIN, CAN_RX_PIN, TWAI_MODE_NORMAL);
@@ -289,8 +301,8 @@ void setup()
 
 void loop()
 {
-   static uint8_t displayCounter = 0; // how often to update the display
-   static uint8_t tempCounter = 0; // how often to read the temperature
+   static uint8_t displayCounter = 0;  // 0..(DISPLAY_SLOWER-1), 10 Hz
+   static uint8_t tempCounter = 0;     // 0..49, 500 ms water bath update
 
    // --- Power button logic with ON/OFF toggle ---
    static bool powerLatched = false; // Start with power latched ON for testing; in production, consider starting OFF
@@ -305,29 +317,15 @@ void loop()
       USBSerial.printf("Power %s\n", powerLatched ? "latched ON" : "unlatched OFF");
       if (powerLatched)
       {
-         actualRPM = 100.0f;
-         if (TMC2209_bathDriver != nullptr)         {
-            TMC2209_bathDriver->setRpmActual(actualRPM);
-         }
-         digitalWrite(LED_BUILTIN_PIN, HIGH); // LED on when power on
-         //digitalWrite(HEATER_FET_PIN, HIGH); // Ensure heater is on until needed (remove or set HIGH in production)
-         digitalWrite(POWER_HOLD_PIN, HIGH); // Latch power on until next button press
-
-         
-         
+         digitalWrite(LED_BUILTIN_PIN, HIGH);
+         digitalWrite(POWER_HOLD_PIN, HIGH);
+         // Heater stays off until explicitly enabled (e.g. CAN SET_WATER_TEMP heater_enable=1)
       }
       else
       {
-         // set actualRPM = 0.0f
-         actualRPM = 0.0f;
-         if (TMC2209_bathDriver != nullptr)         {
-            TMC2209_bathDriver->setRpmActual(actualRPM);
-         }
-
-         digitalWrite(LED_BUILTIN_PIN, LOW); // LED off when power off
-         digitalWrite(HEATER_FET_PIN, LOW); // Ensure heater is off when power is cut
-         digitalWrite(POWER_HOLD_PIN, LOW); // Cut power (in production, this will actually cut power; in testing it just simulates the button press)
-
+         waterBathController.disable();  // heater off, circulator off
+         digitalWrite(LED_BUILTIN_PIN, LOW);
+         digitalWrite(POWER_HOLD_PIN, LOW);
       }
 
    }
@@ -342,7 +340,7 @@ void loop()
       serialEvent();
    }
 
-   if (timer3Didtic)
+   if (timer3Didtic) // runs at 100 Hz
    {
       timer3Didtic = false;
       motionController->pollAxis();
@@ -350,86 +348,32 @@ void loop()
       displayCounter++;
       tempCounter++;
 
-      // timer3Didtic: 10 ms base; DISPLAY_SLOWER groups that into a 100 ms "slow" tick.
-
-      if (displayCounter >= DISPLAY_SLOWER)
+      if (displayCounter >= DISPLAY_SLOWER) // 10 Hz
       {
          displayCounter = 0;
-         float shuntVoltage = ina219.getShuntVoltage_mV();
-         float busVoltage = ina219.getBusVoltage();
-         float current = ina219.getCurrent();
-         //USBSerial.printf("Shunt Voltage: %.2f mV\t", shuntVoltage);
-         //USBSerial.printf("Bus Voltage: %.2f V\t", busVoltage);
-         //USBSerial.printf("Current: %.2f A\n", current);
-         //USBSerial.printf("Button State: %s\n", digitalRead(POWER_BUTTON_SIGNAL) == LOW ? "RELEASED" : "PRESSED" );
-         
-         
+         // Add other 10 Hz display / INA219 / UI updates here
       }
 
-      if (tempCounter >= 50) // 5 * 100 ms = 500 ms
+      if (tempCounter >= 50) // every 500 ms
       {
          tempCounter = 0;
+         waterBathController.update();
+         waterBathCanAdapter.tick(millis());  // emit BATH_STATUS (0x280) every half second
 
-         // Every 500 ms: read previous conversion result, then request a new one.
-         float bathTempC = bathTempSensor.getTempCByIndex(0);
-
-         if (bathTempC != DEVICE_DISCONNECTED_C)
-         {
-            USBSerial.printf("Bath Temp: %.1f C\n", bathTempC);
-            
-         }
-         else
-         {
-            USBSerial.println("Bath Temp: sensor disconnected");
-         }
-
-         // Start next conversion; returns immediately (non-blocking).
-         bathTempSensor.requestTemperatures();
+         WaterBathError err = waterBathController.getErrorCode();
+         // if (err == WaterBathError::BathSensorDisconnected)
+         //    USBSerial.print("WaterBath: bath sensor disconnected\t");
+         // else if (err != WaterBathError::None)
+         //    USBSerial.printf("WaterBath FAULT: %s\t", WaterBathController::errorToString(err));
+         // else
+         //    USBSerial.printf("Bath: %.1f C  Block: %.1f C  Heater: %s  Current: %.2f A\n",
+         //       waterBathController.getBathTempC(), waterBathController.getBlockTempC(),
+         //       waterBathController.isHeaterOn() ? "On" : "Off", waterBathController.getHeaterCurrentA());
       }
-
-      if (TMC2209_bathDriver != nullptr)
-      {
-         if (actualRPM != 0.0f)
-            bathMotor->enable();
-         else
-            bathMotor->disable();
-      }
-
-      
-
-      
    }
 
-   // send constant can message every loop for testing
-   twai_message_t tx_message;
-   tx_message.identifier = 0x282; // Example ID for ACK
-   tx_message.data_length_code = 3;
-   tx_message.data[0] = millis(); // seq_echo (example)
-   tx_message.data[1] = 0x00; // result (0 = OK)
-   tx_message.data[2] = 0x00; // detail_code (optional)
-   if (twai_transmit(&tx_message, 0) != ESP_OK) { // 0 = non-blocking
-      USBSerial.println("TWAI TX failed");
-   } else {
-      USBSerial.println("TWAI TX success\t");
-      USBSerial.printf("Sent CAN frame: ID=0x%03X DLC=%d Data: %02X %02X %02X\n",
-                       tx_message.identifier, tx_message.data_length_code,
-                       tx_message.data[0], tx_message.data[1], tx_message.data[2]);
-   }
-
-   // --- TWAI (CAN) Receive Logic ---
    twai_message_t rx_message;
-   if (twai_receive(&rx_message, 0) == ESP_OK) { // 0 = non-blocking
-      USBSerial.printf("TWAI RX: ID=0x%03X DLC=%d Data:", rx_message.identifier, rx_message.data_length_code);
-      for (int i = 0; i < rx_message.data_length_code; i++) {
-         USBSerial.printf(" %02X", rx_message.data[i]);
-      }
-      USBSerial.println();
-
-      // Example: handle specific message ID
-      if (rx_message.identifier == 0x0E0) {
-         // Do something with the received data
-      }
-   }
-   
+   if (twai_receive(&rx_message, 0) == ESP_OK)
+      canRouter.dispatch(&rx_message);
 }
 
