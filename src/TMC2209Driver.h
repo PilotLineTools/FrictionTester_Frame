@@ -68,6 +68,8 @@ private:
     uint8_t _sgthrs;
     float _rsense;
     TMC2209Config _config;
+    const unsigned long _fclk_hz = 12000000; // 12 MHz internal clock for TMC2209
+    const uint8_t _scale_exp = 24; // VACTUAL scaling exponent (2^24)
 
 public:
     /**
@@ -126,6 +128,11 @@ public:
      * @param vactualRegisterValue Signed VACTUAL register value (µsteps/tick of driver timing base)
      */
     void setVactual(int32_t vactualRegisterValue);
+
+    /**
+    * Set velocity in RPM (for spin motor). Converts to VACTUAL internally.
+    * @param rpm Target speed in RPM (positive or negative for direction)
+    */ void setRpmActual(float rpm);
 
     /**
      * Get StallGuard result register value

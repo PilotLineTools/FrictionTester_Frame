@@ -233,6 +233,28 @@ void TMC2209Driver::setVactual(int32_t vactualRegisterValue)
     _stepper->VACTUAL(vactualRegisterValue);
 }
 
+// Set Rpm Actual
+void TMC2209Driver::setRpmActual(float rpm)
+{
+    
+    if (_stepper == nullptr)
+        return;
+    
+    // Calculate VACTUAL from RPM
+    float ustepsPerRev = 200 * _microsteps;  // 200 steps/rev for typical stepper, multiplied by microsteps
+    float ustepsPerSec = (fabsf(rpm) / 60.0f) * ustepsPerRev;
+    float vactualScale = (float)(1UL << _scale_exp) / (float)_fclk_hz;
+    int32_t vactual = (int32_t)(ustepsPerSec * vactualScale + 0.5f);
+
+    // Apply direction
+    if (rpm < 0.0f)
+        vactual = -vactual;
+
+    _stepper->VACTUAL(vactual);
+    USBSerial.printf("[%s] RPM set to %.1f -> VACTUAL=%d (usteps/s=%.1f)\n", _name, rpm, vactual, ustepsPerSec);
+
+} 
+
 uint16_t TMC2209Driver::getSGResult()
 {
     if (_stepper)

@@ -27,13 +27,12 @@
 #endif
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include "driver/twai.h"  
 
 // ---------------------------------------------------------------------------
 // Forward declarations (implementations below)
 // ---------------------------------------------------------------------------
 void serialEvent(void);
-
-
 
 // ---------------------------------------------------------------------------
 // State and globals
@@ -146,7 +145,6 @@ void setup()
    pinMode(GUI_SHUTDOWN_PIN, INPUT_PULLUP); 
 
    pinMode(POWER_HOLD_PIN, OUTPUT);
-   digitalWrite(POWER_HOLD_PIN, LOW);
    pinMode(HEATER_FET_PIN, OUTPUT);
    pinMode(LED_BUILTIN_PIN, OUTPUT);
 
@@ -255,6 +253,36 @@ void setup()
       ina219.setMaxCurrentShunt(8.0, 0.004); // Max current 8A, shunt 4mΩ (for testing with higher current; adjust for production)
    }
 
+   float actualRPM = 100.0f;
+
+   TMC2209_bathDriver->setRpmActual(actualRPM);
+
+   // --- TWAI (CAN) Configuration ---
+   twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(CAN_TX_PIN, CAN_RX_PIN, TWAI_MODE_NORMAL);
+   twai_timing_config_t t_config = TWAI_TIMING_CONFIG_500KBITS(); // 500 kbps
+   twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+
+   // Install TWAI driver
+   if (twai_driver_install(&g_config, &t_config, &f_config) == ESP_OK) {
+      USBSerial.println("TWAI driver installed");
+   } else {
+      USBSerial.println("TWAI driver install failed");
+   }
+
+   // Start TWAI driver
+   if (twai_start() == ESP_OK) {
+      USBSerial.println("TWAI driver started");
+   } else {
+      USBSerial.println("TWAI driver start failed");
+   }
+
+   // Send CAN frame ACK Message (ID: 0x282)
+   /* b0 = seq_echo
+      b1 = result (0 ok / 1 bad)
+      b2 = detail_code (optional)
+   */
+   
+
    
 }
 
@@ -265,29 +293,45 @@ void loop()
    static uint8_t tempCounter = 0; // how often to read the temperature
 
    // --- Power button logic with ON/OFF toggle ---
-   static bool powerLatched = false;
-   static bool lastButtonState = HIGH;
+   static bool powerLatched = false; // Start with power latched ON for testing; in production, consider starting OFF
+   static bool lastButtonState = HIGH; // Assume button not pressed at startup (active LOW)
    bool buttonState = digitalRead(POWER_BUTTON_SIGNAL);
 
    // Detect button press (falling edge)
    if (lastButtonState == HIGH && buttonState == LOW)
    {
+      
       powerLatched = !powerLatched;
       USBSerial.printf("Power %s\n", powerLatched ? "latched ON" : "unlatched OFF");
       if (powerLatched)
       {
+         actualRPM = 100.0f;
+         if (TMC2209_bathDriver != nullptr)         {
+            TMC2209_bathDriver->setRpmActual(actualRPM);
+         }
          digitalWrite(LED_BUILTIN_PIN, HIGH); // LED on when power on
-         digitalWrite(HEATER_FET_PIN, HIGH); // Ensure heater is on until needed (remove or set HIGH in production)
+         //digitalWrite(HEATER_FET_PIN, HIGH); // Ensure heater is on until needed (remove or set HIGH in production)
          digitalWrite(POWER_HOLD_PIN, HIGH); // Latch power on until next button press
+
+         
+         
       }
       else
       {
+         // set actualRPM = 0.0f
+         actualRPM = 0.0f;
+         if (TMC2209_bathDriver != nullptr)         {
+            TMC2209_bathDriver->setRpmActual(actualRPM);
+         }
+
          digitalWrite(LED_BUILTIN_PIN, LOW); // LED off when power off
          digitalWrite(HEATER_FET_PIN, LOW); // Ensure heater is off when power is cut
          digitalWrite(POWER_HOLD_PIN, LOW); // Cut power (in production, this will actually cut power; in testing it just simulates the button press)
+
       }
 
    }
+  
    lastButtonState = buttonState;
 
    
@@ -314,9 +358,11 @@ void loop()
          float shuntVoltage = ina219.getShuntVoltage_mV();
          float busVoltage = ina219.getBusVoltage();
          float current = ina219.getCurrent();
-         USBSerial.printf("Shunt Voltage: %.2f mV\t", shuntVoltage);
-         USBSerial.printf("Bus Voltage: %.2f V\t", busVoltage);
-         USBSerial.printf("Current: %.2f A\n", current);
+         //USBSerial.printf("Shunt Voltage: %.2f mV\t", shuntVoltage);
+         //USBSerial.printf("Bus Voltage: %.2f V\t", busVoltage);
+         //USBSerial.printf("Current: %.2f A\n", current);
+         //USBSerial.printf("Button State: %s\n", digitalRead(POWER_BUTTON_SIGNAL) == LOW ? "RELEASED" : "PRESSED" );
+         
          
       }
 
@@ -330,6 +376,7 @@ void loop()
          if (bathTempC != DEVICE_DISCONNECTED_C)
          {
             USBSerial.printf("Bath Temp: %.1f C\n", bathTempC);
+            
          }
          else
          {
@@ -340,8 +387,48 @@ void loop()
          bathTempSensor.requestTemperatures();
       }
 
-      // LED Power/Mode indication
+      if (TMC2209_bathDriver != nullptr)
+      {
+         if (actualRPM != 0.0f)
+            bathMotor->enable();
+         else
+            bathMotor->disable();
+      }
+
       
+
+      
+   }
+
+   // send constant can message every loop for testing
+   twai_message_t tx_message;
+   tx_message.identifier = 0x282; // Example ID for ACK
+   tx_message.data_length_code = 3;
+   tx_message.data[0] = millis(); // seq_echo (example)
+   tx_message.data[1] = 0x00; // result (0 = OK)
+   tx_message.data[2] = 0x00; // detail_code (optional)
+   if (twai_transmit(&tx_message, 0) != ESP_OK) { // 0 = non-blocking
+      USBSerial.println("TWAI TX failed");
+   } else {
+      USBSerial.println("TWAI TX success\t");
+      USBSerial.printf("Sent CAN frame: ID=0x%03X DLC=%d Data: %02X %02X %02X\n",
+                       tx_message.identifier, tx_message.data_length_code,
+                       tx_message.data[0], tx_message.data[1], tx_message.data[2]);
+   }
+
+   // --- TWAI (CAN) Receive Logic ---
+   twai_message_t rx_message;
+   if (twai_receive(&rx_message, 0) == ESP_OK) { // 0 = non-blocking
+      USBSerial.printf("TWAI RX: ID=0x%03X DLC=%d Data:", rx_message.identifier, rx_message.data_length_code);
+      for (int i = 0; i < rx_message.data_length_code; i++) {
+         USBSerial.printf(" %02X", rx_message.data[i]);
+      }
+      USBSerial.println();
+
+      // Example: handle specific message ID
+      if (rx_message.identifier == 0x0E0) {
+         // Do something with the received data
+      }
    }
    
 }

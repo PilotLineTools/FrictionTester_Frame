@@ -96,13 +96,13 @@ const double initialSpeed = 100;        // Initial speed in steps/sec
 // TMC2209 Configuration
 #define CARRIAGE_TMC_ADDRESS (0)  // UART address 0
 #define CARRIAGE_TMC_RSENSE (0.100f)
-#define CARRIAGE_TMC_RMS_CURRENT_MA (800)
+#define CARRIAGE_TMC_RMS_CURRENT_MA (400)
 #define CARRIAGE_TMC_MICROSTEPS (16)
 
 // TMC2209 Configuration
 #define BATH_TMC_ADDRESS (1)  // UART address 1
 #define BATH_TMC_RSENSE (0.100f)
-#define BATH_TMC_RMS_CURRENT_MA (800)
+#define BATH_TMC_RMS_CURRENT_MA (400)
 #define BATH_TMC_MICROSTEPS (16)
 
 // TMC2209 CHOPCONF MRES (datasheet): MRES 0 = 256 native; MRES 1..8 = 128,64,32,16,8,4,2,1 (2^MRES microsteps per step)
