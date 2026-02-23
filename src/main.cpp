@@ -119,6 +119,14 @@ static void setCirculatorRpm(float rpm)
       (rpm > 0.0f) ? bathMotor->enable() : bathMotor->disable();
 }
 
+static void logCanRxFrame(const twai_message_t &msg)
+{
+   USBSerial.printf("CAN RX id=0x%03lX dlc=%u data=", (unsigned long)(msg.identifier & 0x7FF), (unsigned)msg.data_length_code);
+   for (uint8_t i = 0; i < msg.data_length_code; i++)
+      USBSerial.printf("%02X%s", msg.data[i], (i + 1 < msg.data_length_code) ? " " : "");
+   USBSerial.println();
+}
+
 void setup()
 {
    // Power saving: lower CPU frequency (saves ~30–50 mA)
@@ -374,6 +382,8 @@ void loop()
 
    twai_message_t rx_message;
    if (twai_receive(&rx_message, 0) == ESP_OK)
+   {
+      logCanRxFrame(rx_message);
       canRouter.dispatch(&rx_message);
+   }
 }
-
