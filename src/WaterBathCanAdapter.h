@@ -21,7 +21,7 @@
 // -----------------------------------------------------------------------------
 // CAN IDs (11-bit)
 // -----------------------------------------------------------------------------
-static const uint32_t CAN_ID_SET_WATER_TEMP = 0x080u;
+static const uint32_t CAN_ID_SET_WATER_BATH = 0x080u;
 static const uint32_t CAN_ID_BATH_STATUS    = 0x280u;
 static const uint32_t CAN_ID_FRAME_ACK      = 0x282u;
 
@@ -108,11 +108,11 @@ private:
    uint32_t _statusIntervalMs = 500;  // 0.5 s, aligned with controller update
    uint8_t _ackSeq = 0;
 
-   void handleSetWaterTemp(const twai_message_t *msg);
+   void handleSetWaterBath(const twai_message_t *msg);
    void sendBathStatus();
    void sendAck(uint8_t result, uint8_t detailCode);
 
-   static void staticHandleSetWaterTemp(const twai_message_t *msg, void *ctx);
+   static void staticHandleSetWaterBath(const twai_message_t *msg, void *ctx);
 };
 
 #endif // WATER_BATH_CAN_ADAPTER_H

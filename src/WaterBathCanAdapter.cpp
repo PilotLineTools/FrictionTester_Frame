@@ -15,7 +15,7 @@ WaterBathCanAdapter::WaterBathCanAdapter(WaterBathController *controller, ICanRo
 void WaterBathCanAdapter::begin()
 {
    if (_router)
-      _router->on(CAN_ID_SET_WATER_TEMP, &WaterBathCanAdapter::staticHandleSetWaterTemp, this);
+      _router->on(CAN_ID_SET_WATER_TEMP, &WaterBathCanAdapter::staticHandleSetWaterBath, this);
 }
 
 void WaterBathCanAdapter::tick(uint32_t now_ms)
@@ -29,14 +29,14 @@ void WaterBathCanAdapter::tick(uint32_t now_ms)
    }
 }
 
-void WaterBathCanAdapter::staticHandleSetWaterTemp(const twai_message_t *msg, void *ctx)
+void WaterBathCanAdapter::staticHandleSetWaterBath(const twai_message_t *msg, void *ctx)
 {
    auto *adapter = static_cast<WaterBathCanAdapter *>(ctx);
    if (adapter)
-      adapter->handleSetWaterTemp(msg);
+      adapter->handleSetWaterBath(msg);
 }
 
-void WaterBathCanAdapter::handleSetWaterTemp(const twai_message_t *msg)
+void WaterBathCanAdapter::handleSetWaterBath(const twai_message_t *msg)
 {
    const uint8_t *d = msg->data;
    const uint8_t dlc = msg->data_length_code;
