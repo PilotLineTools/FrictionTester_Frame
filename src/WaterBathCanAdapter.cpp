@@ -1,6 +1,6 @@
 /**
  * WaterBathCanAdapter - Implementation.
- * Handles 0x080 SET_WATER_TEMP, sends 0x280 BATH_STATUS and 0x282 FRAME_ACK.
+ * Handles 0x080 SET_WATER_BATH, sends 0x280 BATH_STATUS and 0x282 FRAME_ACK.
  */
 
 #include "WaterBathCanAdapter.h"
@@ -15,7 +15,7 @@ WaterBathCanAdapter::WaterBathCanAdapter(WaterBathController *controller, ICanRo
 void WaterBathCanAdapter::begin()
 {
    if (_router)
-      _router->on(CAN_ID_SET_WATER_TEMP, &WaterBathCanAdapter::staticHandleSetWaterBath, this);
+      _router->on(CAN_ID_SET_WATER_BATH, &WaterBathCanAdapter::staticHandleSetWaterBath, this);
 }
 
 void WaterBathCanAdapter::tick(uint32_t now_ms)
