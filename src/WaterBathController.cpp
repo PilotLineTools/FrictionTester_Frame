@@ -4,6 +4,8 @@
  */
 
 #include "WaterBathController.h"
+#include "Motor.h"
+#include "TMC2209Driver.h"
 
 // NTC thermistor: 10k @ 25°C, B = 3950, series resistor 10k to 3.3V, NTC to GND
 #define NTC_R0 10000.0f
@@ -36,14 +38,17 @@ void WaterBathController::enable()
 {
    _enabled = true;
    _errorCode = WaterBathError::None;
-   applyCirculator(true);
+   enableCirculator();
+   enableHeater();
+   USBSerial.println("WB FLOW ctrl enable()");
 }
 
 void WaterBathController::disable()
 {
    _enabled = false;
-   setHeaterOn(false);
-   applyCirculator(false);
+   disableHeater();
+   disableCirculator();
+   USBSerial.println("WB FLOW ctrl disable()");
 }
 
 void WaterBathController::setTargetTemp(float tempC)
@@ -62,13 +67,46 @@ void WaterBathController::setBlockTempLimit(float tempC)
    _blockTempMaxC = tempC;
 }
 
+void WaterBathController::setCirculatorHardware(Motor *motor, TMC2209Driver *driver)
+{
+   _circulatorMotor = motor;
+   _circulatorDriver = driver;
+}
+
+void WaterBathController::setCirculatorTargetRpm(float rpm)
+{
+   if (rpm < 0.0f)
+      rpm = 0.0f;
+   _circulatorTargetRpm = rpm;
+   applyCirculator();
+}
+
 void WaterBathController::setHeaterOn(bool on)
 {
+   const bool requestedOn = on;
    if (!_enabled || _errorCode != WaterBathError::None)
       on = false;
-
+   
    _heaterOn = on;
-   digitalWrite(_heaterPin, on ? HIGH : LOW);
+   uint8_t pinLevel = on ? HIGH : LOW;
+   digitalWrite(_heaterPin, pinLevel);
+   USBSerial.printf("WB FLOW heater apply requested=%u applied=%u enabled=%u err=%u pin=%u\n",
+                    (unsigned)requestedOn,
+                    (unsigned)on,
+                    (unsigned)_enabled,
+                    (unsigned)_errorCode,
+                    (unsigned)pinLevel);
+}
+
+void WaterBathController::enableHeater()
+{
+   // Do not force ON here; apply the currently requested heater state.
+   setHeaterOn(_heaterOn);
+}
+
+void WaterBathController::disableHeater()
+{
+   setHeaterOn(false);
 }
 
 float WaterBathController::readBlockTempC()
@@ -85,10 +123,29 @@ float WaterBathController::readBlockTempC()
    return t_k - 273.15f;
 }
 
-void WaterBathController::applyCirculator(bool on)
+void WaterBathController::applyCirculator()
 {
-   if (_setCirculatorRpm)
-      _setCirculatorRpm(on ? 100.0f : 0.0f);
+   float rpm = (_enabled && _errorCode == WaterBathError::None) ? _circulatorTargetRpm : 0.0f;
+
+   if (_circulatorDriver != nullptr)
+      _circulatorDriver->setRpmActual(rpm);
+
+   if (_circulatorMotor != nullptr)
+      (rpm > 0.0f) ? _circulatorMotor->enable() : _circulatorMotor->disable();
+}
+
+void WaterBathController::enableCirculator()
+{
+   applyCirculator();
+}
+
+void WaterBathController::disableCirculator()
+{
+   if (_circulatorDriver != nullptr)
+      _circulatorDriver->setRpmActual(0.0f);
+
+   if (_circulatorMotor != nullptr)
+      _circulatorMotor->disable();
 }
 
 void WaterBathController::update()
@@ -97,29 +154,44 @@ void WaterBathController::update()
    _blockTempC = readBlockTempC();
    _heaterCurrentA = _currentSensor->getCurrent();
 
+   // Check error conditions. If any fault is active, turn off heater and set error code.
+
+   // Case 1: Bath sensor disconnected or out of range
    if (_bathTempC <= -127.0f || _bathTempC >= 85.0f)
    {
       _errorCode = WaterBathError::BathSensorDisconnected;
       setHeaterOn(false);
    }
+
+   /**/
+
+   // Case 2: Heater current out of limits
    else if (_heaterCurrentA > _heaterCurrentMaxA)
    {
       _errorCode = WaterBathError::HeaterCurrentHigh;
       setHeaterOn(false);
    }
+
+   // Case 3: Heater current too low (possible open circuit)
    else if (_heaterCurrentA < _heaterCurrentMinA && _heaterOn)
    {
       _errorCode = WaterBathError::HeaterCurrentLow;
       setHeaterOn(false);
    }
+
+   // Case 4: Block over-temperature
    else if (_blockTempC > _blockTempMaxC)
    {
       _errorCode = WaterBathError::BlockOvertemp;
       setHeaterOn(false);
    }
+
+   // No faults, apply normal control logic
    else
    {
       _errorCode = WaterBathError::None;
+      // Heater control logic with deadband
+      // Heater on if bath temp is below target - deadband, off if above target + deadband
       if (_bathTempC < _targetTempC - _deadbandC)
          _heaterOn = true;
       else if (_bathTempC > _targetTempC + _deadbandC)

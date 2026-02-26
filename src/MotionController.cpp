@@ -7,7 +7,7 @@ volatile bool stallDetected_Z = false;
 
 MotionController::MotionController() : primaryAxis(0)
 {
-   for (int i = 0; i < 2; ++i)
+   for (int i = 0; i < kMaxAxes; ++i)
       axisArray[i] = nullptr;
 }
 
@@ -24,8 +24,37 @@ void MotionController::init()
 
 void MotionController::addAxis(Axis &axis)
 {
-   axisArray[axisCount] = &axis;
-   axisCount++;
+   for (uint8_t i = 0; i < kMaxAxes; i++)
+   {
+      if (axisArray[i] == nullptr)
+      {
+         axisArray[i] = &axis;
+         if (axisCount < (i + 1))
+            axisCount = i + 1;
+         return;
+      }
+   }
+   USBSerial.printf("ERROR: addAxis failed, max axes reached (%u)\n", (unsigned)kMaxAxes);
+}
+
+void MotionController::addAxis(Axis &axis, AxisId id)
+{
+   if (!isValidAxisId(id))
+   {
+      USBSerial.printf("ERROR: addAxis failed, invalid axis id: %d\n", (int)id);
+      return;
+   }
+
+   uint8_t index = axisToIndex(id);
+   if (index >= kMaxAxes)
+   {
+      USBSerial.printf("ERROR: addAxis failed, axis index %u out of range (max=%u)\n", (unsigned)index, (unsigned)(kMaxAxes - 1));
+      return;
+   }
+
+   axisArray[index] = &axis;
+   if (axisCount < (index + 1))
+      axisCount = index + 1;
 }
 
 int32_t MotionController::calculateRamp(int _axis)
@@ -190,9 +219,9 @@ uint8_t MotionController::makeMoves()
 void MotionController::moveRel(uint8_t axis, float distance, float targetSpeed)
 {
    USBSerial.printf("FUNCTION: moveRel\n");
-   if (axis >= 2)
+   if (axis >= kMaxAxes)
    {
-      USBSerial.printf("ERROR: Invalid axis index in moveRel axisCount=2\n", axis);
+      USBSerial.printf("ERROR: Invalid axis index in moveRel maxAxes=%u\n", (unsigned)kMaxAxes);
       return;
    }
 
@@ -221,26 +250,24 @@ void MotionController::moveRel(uint8_t axis, float distance, float targetSpeed)
    }
 
    addRelativeMove(axis, distance, targetSpeed);
-   axisArray[primaryAxis]->currentSpeed = axisArray[primaryAxis]->startFrequency;
+   axisArray[axis]->currentSpeed = axisArray[axis]->startFrequency;
    makeMoves();
 }
 
 void MotionController::moveAbs(uint8_t axis, float distance, float targetSpeed)
 {
-   USBSerial.print("target speed = ");
-   USBSerial.print(targetSpeed);
-   USBSerial.println(" mm/sec");
 
    // Convert target position from mm to steps for comparison
    int32_t targetPosSteps = axisArray[axis]->stepsPerUnit * distance;
    bool _direction = targetPosSteps > axisArray[axis]->currentPosition ? 1 : 0;
 
-   USBSerial.printf("moveAbs: axis=%d, currentPos=%ld steps (%.1fmm), targetPos=%.1fmm (%ld steps), dir=%s, canMovePos=%d, canMoveNeg=%d\n",
+   USBSerial.printf("MotionController moveAbs: axis=%d, currentPos=%ld steps (%.1fmm), targetPos=%.1fmm (%ld steps), targetSpeed=%.1fmm/s, dir=%s, canMovePos=%d, canMoveNeg=%d\n",
                     axis,
                     axisArray[axis]->currentPosition,
                     axisArray[axis]->currentPosition / axisArray[axis]->stepsPerUnit,
                     distance,
                     targetPosSteps,
+                    targetSpeed,
                     _direction ? "POS" : "NEG",
                     axisArray[axis]->canMovePositive,
                     axisArray[axis]->canMoveNegative);

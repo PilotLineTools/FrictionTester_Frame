@@ -5,7 +5,7 @@
  * - Heater driven via MOSFET (digital on/off on HEATER_FET_PIN), updated every ~500 ms.
  * - INA219 monitors heater current; shuts down + error if out of bounds.
  * - Heater block thermistor: shutdown + fault if over limit.
- * - Circulator (TMC-driven) can be turned on/off via callback; main wires this to bath motor.
+ * - Circulator (TMC-driven) is controlled directly by WaterBathController via configured motor/driver pointers.
  *
  * Call update(bathTempC) every ~500 ms from main (non-blocking). No blocking calls.
  */
@@ -28,8 +28,8 @@ enum class WaterBathError : uint8_t
    BathSensorDisconnected
 };
 
-// Optional callback: set circulator RPM (main implements via TMC driver). Can be nullptr.
-using SetCirculatorRpmFn = void (*)(float rpm);
+class Motor;
+class TMC2209Driver;
 
 class WaterBathController
 {
@@ -89,8 +89,11 @@ public:
    float getHeaterDuty() const { return _heaterOn ? 1.0f : 0.0f; }
    bool isHeaterOn() const { return _heaterOn; }
 
-   /** Set circulator RPM callback (main sets to wire TMC bath motor). */
-   void setCirculatorRpmCallback(SetCirculatorRpmFn fn) { _setCirculatorRpm = fn; }
+   /** Configure circulator hardware controlled by this controller. */
+   void setCirculatorHardware(Motor *motor, TMC2209Driver *driver);
+   /** Requested circulator RPM from command layer. Applied only when controller is enabled and fault-free. */
+   void setCirculatorTargetRpm(float rpm);
+   float getCirculatorTargetRpm() const { return _circulatorTargetRpm; }
 
 private:
    int _heaterPin;
@@ -111,11 +114,17 @@ private:
    bool _heaterOn = false;
 
    WaterBathError _errorCode = WaterBathError::None;
-   SetCirculatorRpmFn _setCirculatorRpm = nullptr;
+   Motor *_circulatorMotor = nullptr;
+   TMC2209Driver *_circulatorDriver = nullptr;
+   float _circulatorTargetRpm = 0.0f;
 
    void setHeaterOn(bool on);
+   void enableHeater();
+   void disableHeater();
+   void enableCirculator();
+   void disableCirculator();
    float readBlockTempC();
-   void applyCirculator(bool on);
+   void applyCirculator();
 };
 
 #endif // WATER_BATH_CONTROLLER_H

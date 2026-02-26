@@ -30,6 +30,9 @@
 #include "driver/twai.h"
 #include "WaterBathController.h"
 #include "WaterBathCanAdapter.h"
+#include "FrameCanAdapter.h"
+#include "CarriageController.h"
+#include "CarriageCanAdapter.h"
 #include "CanRouter.h"
 
 // ---------------------------------------------------------------------------
@@ -109,15 +112,10 @@ OneWire oneWireBath(BATH_TEMP_DQ_PIN);
 DallasTemperature bathTempSensor(&oneWireBath);
 WaterBathController waterBathController(HEATER_FET_PIN, &bathTempSensor, &ina219, HEATER_BLOCK_THERMISTOR_PIN);
 CanRouter canRouter;
-WaterBathCanAdapter waterBathCanAdapter(&waterBathController, &canRouter);
-
-static void setCirculatorRpm(float rpm)
-{
-   if (TMC2209_bathDriver != nullptr)
-      TMC2209_bathDriver->setRpmActual(rpm);
-   if (bathMotor != nullptr)
-      (rpm > 0.0f) ? bathMotor->enable() : bathMotor->disable();
-}
+FrameCanAdapter frameCanAdapter(&canRouter);
+WaterBathCanAdapter waterBathCanAdapter(&waterBathController, &canRouter, &frameCanAdapter);
+CarriageController *carriageController = nullptr;
+CarriageCanAdapter *carriageCanAdapter = nullptr;
 
 static void logCanRxFrame(const twai_message_t &msg)
 {
@@ -167,6 +165,7 @@ void setup()
    pinMode(POWER_HOLD_PIN, OUTPUT);
    pinMode(HEATER_FET_PIN, OUTPUT);
    pinMode(LED_BUILTIN_PIN, OUTPUT);
+   digitalWrite(HEATER_FET_PIN, LOW); // startup failsafe: keep heater off
 
    motionController = new MotionController();
    globalMC = motionController;
@@ -207,7 +206,7 @@ void setup()
 
    carriageAxis->addMotor(*carriageMotor);
 
-   motionController->addAxis(*carriageAxis); // this is the 0th axis, Stepper axis
+   motionController->addAxis(*carriageAxis, AxisId::Carriage);
 
    TMCSerial.begin(115200, SERIAL_8N1, TMC_UART_RX, TMC_UART_TX);
 
@@ -242,10 +241,7 @@ void setup()
    USBSerial.print(" ms\n\n");
 
    // Test Move the carriage motor by 1 mm at 500 mm/min (8.33 mm/s)
-   motionController->moveRel(0, 1, 500);
-
-   //Test Move the bath motor by 1 mm at 500 mm/min (8.33 mm/s)
-   motionController->moveRel(1, 1, 500);
+   // motionController->moveRel(AxisId::Carriage, 1, 500);
 
    // Initialize I2C for INA219 on custom pins
    Wire.begin(CURRENT_SCA_PIN, CURRENT_SCL_PIN);
@@ -271,11 +267,15 @@ void setup()
 
    // Water bath controller: PID bath temp, heater current and block overtemp protection
    waterBathController.init();
-   waterBathController.setCirculatorRpmCallback(setCirculatorRpm);
-   waterBathController.setTargetTemp(50.0f);  // default target °C
+   waterBathController.setCirculatorHardware(bathMotor, TMC2209_bathDriver);
+   waterBathController.setTargetTemp(30.0f);  // default target °C
+   waterBathController.disable();              // explicit boot state: heater/circulator off
 
-   waterBathCanAdapter.setCirculatorRpmCallback(setCirculatorRpm);
+   frameCanAdapter.begin();
    waterBathCanAdapter.begin();
+   carriageController = new CarriageController(motionController, carriageAxis);
+   carriageCanAdapter = new CarriageCanAdapter(carriageController, &canRouter, &frameCanAdapter);
+   carriageCanAdapter->begin();
 
    // --- TWAI (CAN) Configuration ---
    twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(CAN_TX_PIN, CAN_RX_PIN, TWAI_MODE_NORMAL);
@@ -295,14 +295,6 @@ void setup()
    } else {
       USBSerial.println("TWAI driver start failed");
    }
-
-   // Send CAN frame ACK Message (ID: 0x282)
-   /* b0 = seq_echo
-      b1 = result (0 ok / 1 bad)
-      b2 = detail_code (optional)
-   */
-   
-
    
 }
 
@@ -385,5 +377,16 @@ void loop()
    {
       logCanRxFrame(rx_message);
       canRouter.dispatch(&rx_message);
+   }
+
+   if (carriageCanAdapter)
+      carriageCanAdapter->tick();
+
+   SystemMode mode;
+   if (frameCanAdapter.consumeModeChange(mode))
+   {
+      waterBathCanAdapter.onModeChanged(mode);
+      if (carriageCanAdapter)
+         carriageCanAdapter->onModeChanged(mode);
    }
 }

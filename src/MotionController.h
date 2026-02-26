@@ -2,15 +2,18 @@
 #define MOTIONCONTROLLER_H
 
 #include "Axis.h"
+#include "AxisId.h"
 #include <stdint.h>
 
 class MotionController
 {
 public:
+  static constexpr uint8_t kMaxAxes = 2;
    MotionController();
 
   // Methods
   void addAxis(Axis &axis);
+  void addAxis(Axis &axis, AxisId id);
   uint32_t updatePositions();
   void handleStepPulseStart();
   void handleStepPulseEnd();
@@ -18,10 +21,14 @@ public:
   void startHardwareTimer4();
   void stopHardwareTimer4();
   void addRelativeMove(uint8_t axis, float distance, float targetSpeed);
+  inline void addRelativeMove(AxisId axis, float distance, float targetSpeed) { addRelativeMove(axisToIndex(axis), distance, targetSpeed); }
   void addAbsoluteMove(uint8_t axis, float position, float targetSpeed);
+  inline void addAbsoluteMove(AxisId axis, float position, float targetSpeed) { addAbsoluteMove(axisToIndex(axis), position, targetSpeed); }
   uint8_t makeMoves();                                           // returns zero if there are no moves to make, otherwise returns the number of moves in the move buffer
   void moveRel(uint8_t axis, float distance, float targetSpeed); // does a move by calling addRelativeMove and makeMoves all inside of itself
+  inline void moveRel(AxisId axis, float distance, float targetSpeed) { moveRel(axisToIndex(axis), distance, targetSpeed); }
   void moveAbs(uint8_t axis, float distance, float targetSpeed);
+  inline void moveAbs(AxisId axis, float distance, float targetSpeed) { moveAbs(axisToIndex(axis), distance, targetSpeed); }
   void stop();
   void stopFast();
   bool pollAxis(); // polls all the axis for their limit switches
@@ -30,11 +37,12 @@ public:
   bool isStopped();
   uint32_t loadMove();                // loads a move from the move array
   float getAbsPosition(uint8_t axis); // returns the absolute position of the axis in engineering units
+  inline float getAbsPosition(AxisId axis) { return getAbsPosition(axisToIndex(axis)); }
   uint8_t getMoveIndex();
 
 private:
 
-  Axis *axisArray[2]; // TODO  keep track of how many axis are added and not just set it to 3
+  Axis *axisArray[kMaxAxes];
   uint8_t primaryAxis;
   uint16_t targetSpeed;
   uint16_t compareRegisterA = 65535;

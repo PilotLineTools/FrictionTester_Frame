@@ -1,16 +1,17 @@
 /**
  * CanRouter - Minimal CAN router: register handlers by 11-bit ID, dispatch received frames, send via TWAI.
- * Implements ICanRouter from WaterBathCanAdapter.h.
+ * Implements shared ICanRouter interface.
  */
 
 #ifndef CAN_ROUTER_H
 #define CAN_ROUTER_H
 
-#include "WaterBathCanAdapter.h"
+#include "ICanRouter.h"
 #include "driver/twai.h"
+#include <Arduino.h>
 
 #ifndef CAN_ROUTER_MAX_HANDLERS
-#define CAN_ROUTER_MAX_HANDLERS 8
+#define CAN_ROUTER_MAX_HANDLERS 16
 #endif
 
 struct CanRouterEntry
