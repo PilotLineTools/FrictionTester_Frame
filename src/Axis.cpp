@@ -33,12 +33,11 @@ void Axis::init()
   currentPosition = 0;
   currentSpeed = 0;
   moving = false;
-  // initialSpeed = 100; // TODO make this a real thing
-  USBSerial.printf("Axis accelleration set to %d steps/s/s\n", acceleration);
+  // USBSerial.printf("Axis accelleration set to %d steps/s/s\n", acceleration);
 
   for (uint8_t i = 0; i < motorCount; i++)
   {
-    USBSerial.printf("initializing motor %d\n", i);
+    // USBSerial.printf("initializing motor %d\n", i);
     allMotors[i]->init();
   }
 }
@@ -112,11 +111,11 @@ void Axis::addMotor(Motor &motor)
 {
   allMotors[motorCount] = &motor;
 
-  USBSerial.print("Added Motor ");
-  USBSerial.print(motorCount);
-  USBSerial.print(", and it has an address of ");
-  USBSerial.println((uintptr_t)allMotors[motorCount], HEX);
-  delay(500);
+  // USBSerial.print("Added Motor ");
+  // USBSerial.print(motorCount);
+  // USBSerial.print(", and it has an address of ");
+  // USBSerial.println((uintptr_t)allMotors[motorCount], HEX);
+  // delay(500);
   motorCount++;
 }
 

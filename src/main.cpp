@@ -34,6 +34,7 @@
 #include "CarriageController.h"
 #include "CarriageCanAdapter.h"
 #include "CanRouter.h"
+#include "PowerController.h"
 
 // ---------------------------------------------------------------------------
 // Forward declarations (implementations below)
@@ -116,6 +117,29 @@ FrameCanAdapter frameCanAdapter(&canRouter);
 WaterBathCanAdapter waterBathCanAdapter(&waterBathController, &canRouter, &frameCanAdapter);
 CarriageController *carriageController = nullptr;
 CarriageCanAdapter *carriageCanAdapter = nullptr;
+PowerController *powerController = nullptr;
+
+static void handlePowerNotification(PowerController::Notification n)
+{
+   switch (n)
+   {
+   case PowerController::Notification::GUIPoweredOn:
+      USBSerial.println("PowerController: GUI powered on");
+      break;
+   case PowerController::Notification::ShutdownRequested:
+      USBSerial.println("PowerController: shutdown requested");
+      //TODO: Send a shutdown request to the GUI via CAN. Tell linux to shutdown.
+      break;
+   case PowerController::Notification::ShutdownInitiated:
+      USBSerial.println("PowerController: shutdown initiated (hold to power off)");
+      //TODO: Send a shutdown initiated message to the GUI via CAN. The GUI can tell the user to hold the power button for 2 seconds to shutdown the system.
+      break;
+   case PowerController::Notification::ShutdownAborted:
+      USBSerial.println("PowerController: shutdown aborted (short press / release)");
+      //TODO: Send a shutdown aborted request to the GUI via CAN. The GUI can remove the shutdown initiated message from the screen.
+      break;
+   }
+}
 
 static void logCanRxFrame(const twai_message_t &msg)
 {
@@ -134,17 +158,28 @@ void setup()
    WiFi.mode(WIFI_OFF);
 #endif
 
+   // Latch frame power as early as possible so the user
+   // does not need to hold the power button through full boot.
+   pinMode(POWER_HOLD_PIN, OUTPUT);
+   digitalWrite(POWER_HOLD_PIN, HIGH);
+
+   // Basic safety on critical outputs before heavier init.
+   pinMode(HEATER_FET_PIN, OUTPUT);
+   digitalWrite(HEATER_FET_PIN, LOW); // startup failsafe: keep heater off
+
+
    USBSerial.begin(115200);
-   delay(50);
    USBSerial.setTimeout(2000);
 
    strcpy(swVer, VERSION_STRING);
+   delay(100);
    USBSerial.print("Version: ");
    USBSerial.println(swVer);
    USBSerial.print("Build Date: ");
    USBSerial.println(BUILD_DATE);
    USBSerial.print("Build Time: ");
    USBSerial.println(BUILD_TIME);
+
 
    // Initialize machine parameters (load from NVS)
    carriageMicroSteps.init();
@@ -159,13 +194,7 @@ void setup()
    bathTpwmThrs.init();
    bathAccelRpmPerSec.init();
    
-   pinMode(POWER_BUTTON_SIGNAL, INPUT);       
-   pinMode(GUI_SHUTDOWN_PIN, INPUT_PULLUP); 
 
-   pinMode(POWER_HOLD_PIN, OUTPUT);
-   pinMode(HEATER_FET_PIN, OUTPUT);
-   pinMode(LED_BUILTIN_PIN, OUTPUT);
-   digitalWrite(HEATER_FET_PIN, LOW); // startup failsafe: keep heater off
 
    motionController = new MotionController();
    globalMC = motionController;
@@ -265,14 +294,16 @@ void setup()
       ina219.setMaxCurrentShunt(8.0, 0.004); // Max current 8A, shunt 4mΩ (for testing with higher current; adjust for production)
    }
 
-   // Water bath controller: PID bath temp, heater current and block overtemp protection
+   // Water bath controller: on/off bath temp control with safety limits
    waterBathController.init();
    waterBathController.setCirculatorHardware(bathMotor, TMC2209_bathDriver);
-   waterBathController.setTargetTemp(30.0f);  // default target °C
+   waterBathController.setTargetTemp(30.0f);   // default target °C
    waterBathController.disable();              // explicit boot state: heater/circulator off
 
    frameCanAdapter.begin();
    waterBathCanAdapter.begin();
+
+   powerController = PowerController::setup(handlePowerNotification);
    carriageController = new CarriageController(motionController, carriageAxis);
    carriageCanAdapter = new CarriageCanAdapter(carriageController, &canRouter, &frameCanAdapter);
    carriageCanAdapter->begin();
@@ -304,34 +335,6 @@ void loop()
    static uint8_t displayCounter = 0;  // 0..(DISPLAY_SLOWER-1), 10 Hz
    static uint8_t tempCounter = 0;     // 0..49, 500 ms water bath update
 
-   // --- Power button logic with ON/OFF toggle ---
-   static bool powerLatched = false; // Start with power latched ON for testing; in production, consider starting OFF
-   static bool lastButtonState = HIGH; // Assume button not pressed at startup (active LOW)
-   bool buttonState = digitalRead(POWER_BUTTON_SIGNAL);
-
-   // Detect button press (falling edge)
-   if (lastButtonState == HIGH && buttonState == LOW)
-   {
-      
-      powerLatched = !powerLatched;
-      USBSerial.printf("Power %s\n", powerLatched ? "latched ON" : "unlatched OFF");
-      if (powerLatched)
-      {
-         digitalWrite(LED_BUILTIN_PIN, HIGH);
-         digitalWrite(POWER_HOLD_PIN, HIGH);
-         // Heater stays off until explicitly enabled (e.g. CAN SET_WATER_TEMP heater_enable=1)
-      }
-      else
-      {
-         waterBathController.disable();  // heater off, circulator off
-         digitalWrite(LED_BUILTIN_PIN, LOW);
-         digitalWrite(POWER_HOLD_PIN, LOW);
-      }
-
-   }
-  
-   lastButtonState = buttonState;
-
    
 
    // Call serialEvent() if there's data available (like Arduino convention)
@@ -347,6 +350,8 @@ void loop()
       timer4value = motionController->updatePositions();
       displayCounter++;
       tempCounter++;
+      if (powerController)
+         powerController->poll10ms();
 
       if (displayCounter >= DISPLAY_SLOWER) // 10 Hz
       {
