@@ -76,22 +76,15 @@ void TMC2209Driver::init(bool use_velocity_mode)
     chopconf.intpol = 1;
     chopconf.vsense = 0;
     _stepper->CHOPCONF(chopconf.sr);
-    USBSerial.printf("[%s] CHOPCONF: 0x%08X (mres=%d -> %u µstep, intpol=%d, toff=%d, tbl=%d)\n",
-                     _name, chopconf.sr, chopconf.mres, (unsigned)_microsteps, chopconf.intpol, chopconf.toff, chopconf.tbl);
-
     _stepper->TPWMTHRS(_config.tpwmthrs);
-    USBSerial.printf("7. TPWMTHRS set to %d\n", _config.tpwmthrs);
-
     _stepper->TCOOLTHRS(_config.tcoolthrs);
-    USBSerial.printf("8. TCOOLTHRS set to %d\n", _config.tcoolthrs);
-
     _stepper->SGTHRS(_sgthrs);
 
-    delay(100);
+    // delay(100);
 
-    uint32_t drv_status = _stepper->DRV_STATUS();
-    uint8_t cs_actual = drv_status & 0x1F;
-    USBSerial.printf("[%s] CS_ACTUAL: %d\n", _name, cs_actual);
+    // uint32_t drv_status = _stepper->DRV_STATUS();
+    // uint8_t cs_actual = drv_status & 0x1F;
+    // USBSerial.printf("[%s] CS_ACTUAL: %d\n", _name, cs_actual);
 }
 
 void TMC2209Driver::setMicrosteps(uint16_t microsteps)
@@ -110,7 +103,7 @@ void TMC2209Driver::setMicrosteps(uint16_t microsteps)
     chopconf.intpol = 1;
     chopconf.vsense = 0;
     _stepper->CHOPCONF(chopconf.sr);
-    USBSerial.printf("[%s] Microsteps set to %u (mres=%d)\n", _name, (unsigned)_microsteps, chopconf.mres);
+    // USBSerial.printf("[%s] Microsteps set to %u (mres=%d)\n", _name, (unsigned)_microsteps, chopconf.mres);
 }
 
 uint16_t TMC2209Driver::getMicrosteps() const

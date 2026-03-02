@@ -90,12 +90,12 @@ void WaterBathController::setHeaterOn(bool on)
    _heaterOn = on;
    uint8_t pinLevel = on ? HIGH : LOW;
    digitalWrite(_heaterPin, pinLevel);
-   USBSerial.printf("WB FLOW heater apply requested=%u applied=%u enabled=%u err=%u pin=%u\n",
-                    (unsigned)requestedOn,
-                    (unsigned)on,
-                    (unsigned)_enabled,
-                    (unsigned)_errorCode,
-                    (unsigned)pinLevel);
+   // USBSerial.printf("WB FLOW heater apply requested=%u applied=%u enabled=%u err=%u pin=%u\n",
+   //                  (unsigned)requestedOn,
+   //                  (unsigned)on,
+   //                  (unsigned)_enabled,
+   //                  (unsigned)_errorCode,
+   //                  (unsigned)pinLevel);
 }
 
 void WaterBathController::enableHeater()

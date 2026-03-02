@@ -180,12 +180,12 @@ public:
       if (prefs.isKey(storageKey.c_str()))
       {
         value = prefs.getFloat(storageKey.c_str(), defaultValue);
-        USBSerial.print("Retrieved float value for '");
-        USBSerial.print(name.c_str());
-        USBSerial.print("' (key: ");
-        USBSerial.print(storageKey.c_str());
-        USBSerial.print("): ");
-        USBSerial.println(value);
+        // USBSerial.print("Retrieved float value for '");
+        // USBSerial.print(name.c_str());
+        // USBSerial.print("' (key: ");
+        // USBSerial.print(storageKey.c_str());
+        // USBSerial.print("): ");
+        // USBSerial.println(value);
       }
       else
       {
@@ -204,12 +204,12 @@ public:
       if (prefs.isKey(storageKey.c_str()))
       {
         value = prefs.getUChar(storageKey.c_str(), defaultValue);
-        USBSerial.print("Retrieved uint8_t value for '");
-        USBSerial.print(name.c_str());
-        USBSerial.print("' (key: ");
-        USBSerial.print(storageKey.c_str());
-        USBSerial.print("): ");
-        USBSerial.println(value);
+        // USBSerial.print("Retrieved uint8_t value for '");
+        // USBSerial.print(name.c_str());
+        // USBSerial.print("' (key: ");
+        // USBSerial.print(storageKey.c_str());
+        // USBSerial.print("): ");
+        // USBSerial.println(value);
       }
       else
       {
@@ -223,12 +223,12 @@ public:
       if (prefs.isKey(storageKey.c_str()))
       {
         value = prefs.getUShort(storageKey.c_str(), defaultValue);
-        USBSerial.print("Retrieved uint16_t value for '");
-        USBSerial.print(name.c_str());
-        USBSerial.print("' (key: ");
-        USBSerial.print(storageKey.c_str());
-        USBSerial.print("): ");
-        USBSerial.println(value);
+        // USBSerial.print("Retrieved uint16_t value for '");
+        // USBSerial.print(name.c_str());
+        // USBSerial.print("' (key: ");
+        // USBSerial.print(storageKey.c_str());
+        // USBSerial.print("): ");
+        // USBSerial.println(value);
       }
       else
       {
@@ -247,12 +247,12 @@ public:
       if (prefs.isKey(storageKey.c_str()))
       {
         value = prefs.getUInt(storageKey.c_str(), defaultValue);
-        USBSerial.print("Retrieved uint32_t value for '");
-        USBSerial.print(name.c_str());
-        USBSerial.print("' (key: ");
-        USBSerial.print(storageKey.c_str());
-        USBSerial.print("): ");
-        USBSerial.println(value);
+        // USBSerial.print("Retrieved uint32_t value for '");
+        // USBSerial.print(name.c_str());
+        // USBSerial.print("' (key: ");
+        // USBSerial.print(storageKey.c_str());
+        // USBSerial.print("): ");
+        // USBSerial.println(value);
       }
       else
       {
