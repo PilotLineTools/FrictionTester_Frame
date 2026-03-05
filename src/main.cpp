@@ -39,7 +39,50 @@
 // ---------------------------------------------------------------------------
 // Forward declarations (implementations below)
 // ---------------------------------------------------------------------------
-void serialEvent(void);
+extern MotionController *motionController;
+extern MachineParameter<uint16_t> carriageMicroSteps;
+extern TMC2209Driver *TMC2209_carriageDriver;
+extern Axis *carriageAxis;
+
+void serialEvent(void)
+{
+   while (USBSerial.available())
+   {
+      char c = (char)USBSerial.read();
+      if (c == 'h' || c == 'H')
+      {
+         // Carriage: 1 rev at 60 RPM (1 rev/s when unit = rev; 60 RPM = 1 rev/s)
+         if (motionController)
+         {
+            motionController->moveRel(AxisId::Carriage, 50.0f, 15.0f);
+            USBSerial.println("Carriage: 1 rev at 60 RPM (1 rev/s)");
+         }
+      }
+      else if (c == 'u' || c == 'U')
+      {
+         // Carriage microsteps: set from serial, clamp to TMC2209 allowed, push to driver and axis
+         carriageMicroSteps.setFromSerial();
+         uint16_t ms = TMC2209Driver::clampMicrostepsToValid(carriageMicroSteps.value);
+         if (ms != carriageMicroSteps.value)
+         {
+            carriageMicroSteps.setValue(ms);
+            USBSerial.printf("Microsteps rounded to TMC2209 allowed value: %u\n", (unsigned)ms);
+         }
+         if (TMC2209_carriageDriver != nullptr)
+         {
+            TMC2209_carriageDriver->setMicrosteps(ms);
+            uint16_t readback = TMC2209_carriageDriver->getMicrosteps();
+            USBSerial.printf("Carriage microsteps set to %u. Allowed: 1,2,4,8,16,32,64,128,256.\n", (unsigned)ms);
+            USBSerial.printf("CHOPCONF readback: %u %s\n", (unsigned)readback, (readback == ms) ? "[OK]" : "[MISMATCH]");
+         }
+         if (carriageAxis != nullptr)
+         {
+            carriageAxis->stepsPerUnit = (float)(MOTOR_STEPS_PER_REV * ms);
+            USBSerial.printf("Carriage stepsPerUnit = %u (200 × %u)\n", (unsigned)(MOTOR_STEPS_PER_REV * ms), (unsigned)ms);
+         }
+      }
+   }
+}
 
 // ---------------------------------------------------------------------------
 // State and globals
@@ -58,7 +101,7 @@ static bool togglePrintRpm = false;
 // ---------------------------------------------------------------------------
 MachineParameter<uint16_t> *allParameters[10];
 // TMC2209 CHOPCONF MRES: 1,2,4,8,16,32,64,128,256 (datasheet)
-MachineParameter<uint16_t> carriageMicroSteps("CarriageMicroSteps", 16, TMC2209_MICROSTEPS_MIN, TMC2209_MICROSTEPS_MAX);
+MachineParameter<uint16_t> carriageMicroSteps("CarriageMicroSteps", CARRIAGE_TMC_MICROSTEPS, TMC2209_MICROSTEPS_MIN, TMC2209_MICROSTEPS_MAX);
 MachineParameter<uint8_t> carriageStallGuardThreshold("CarriageStallGuard", (uint8_t)CARRIAGE_TMC_SGTHRS, 0, 255);
 MachineParameter<uint16_t> carriageRmsCurrentMa("CarriageRmsCurrentMA", CARRIAGE_TMC_RMS_CURRENT_MA, 50, 2000);  // RMS current in mA. Serial "C" to set.
 MachineParameter<uint16_t> carriageTpwmThrs("CarriageTPWMTHRS", CARRIAGE_TMC_TPWMTHRS, 0, 65535);
@@ -66,7 +109,7 @@ MachineParameter<float> carriageAccelRpmPerSec("CarriageAccelRPM", 200.0f, 10.0f
 // Pot calibration: ADC at dial 1–9 (serial "1".."9"). Sub-dial (0–1) extrapolated from slope between 1 and 2.
 
 // Bath TMC2209 Configuration
-MachineParameter<uint16_t> bathMicroSteps("BathMicroSteps", 16, TMC2209_MICROSTEPS_MIN, TMC2209_MICROSTEPS_MAX);
+MachineParameter<uint16_t> bathMicroSteps("BathMicroSteps", BATH_TMC_MICROSTEPS, TMC2209_MICROSTEPS_MIN, TMC2209_MICROSTEPS_MAX);
 MachineParameter<uint8_t> bathStallGuardThreshold("BathStallGuard", (uint8_t)BATH_TMC_SGTHRS, 0, 255);
 MachineParameter<uint16_t> bathRmsCurrentMa("BathRmsCurrentMA", BATH_TMC_RMS_CURRENT_MA, 50, 2000);  // RMS current in mA. Serial "C" to set.
 MachineParameter<uint16_t> bathTpwmThrs("BathTPWMTHRS", BATH_TMC_TPWMTHRS, 0, 65535);
@@ -97,8 +140,9 @@ TMC2209Driver *TMC2209_bathDriver = nullptr;
 void IRAM_ATTR onTimer4A()
 {
    motionController->handleStepPulseStart();
-   // Never set alarm to 0 or very small or timer retriggers immediately → interrupt wdt timeout
-   uint32_t nextUs = (timer4value >= 100) ? timer4value : TIMER4_IDLE_INTERVAL_US;
+   // When not moving use idle interval to avoid ISR storm. When moving use timer4value with min 10 µs (max ~100k steps/s).
+   const uint32_t MIN_STEP_PERIOD_US = 20; // good for 900 RPM at 16 microsteps
+   uint32_t nextUs =(timer4value <= MIN_STEP_PERIOD_US ? MIN_STEP_PERIOD_US : timer4value);
    timerAlarmWrite(timer4, nextUs, true);
    timerAlarmEnable(timer4);
 }
@@ -199,8 +243,8 @@ void setup()
    motionController = new MotionController();
    globalMC = motionController;
 
-   // Create axis objects
-   carriageAxis = new Axis(carriageAccelRpmPerSec.value, CARRIAGE_STEPS_PER_UNIT, CARRIAGE_START_SPEED);
+   // Create axis objects; carriage stepsPerUnit = 200 × carriageMicroSteps (from NVS/default)
+   carriageAxis = new Axis(CARRIAGE_ACCEL, (float)(MOTOR_STEPS_PER_REV * carriageMicroSteps.value), CARRIAGE_START_SPEED);
 
    // Create motor object
    carriageMotor = new Motor(CARRIAGE_STEP_PIN, CARRIAGE_DIR_PIN, CARRIAGE_ENABLE_PIN, 1, CARRIAGE_INVERT_DIRECTION);
@@ -334,8 +378,7 @@ void loop()
 {
    static uint8_t displayCounter = 0;  // 0..(DISPLAY_SLOWER-1), 10 Hz
    static uint8_t tempCounter = 0;     // 0..49, 500 ms water bath update
-
-   
+   static bool needWaterBathUpdate = false;
 
    // Call serialEvent() if there's data available (like Arduino convention)
    if (USBSerial.available())
@@ -343,7 +386,8 @@ void loop()
       serialEvent();
    }
 
-   if (timer3Didtic) // runs at 100 Hz
+   // Process every 10 ms tick; drain so we never miss motion updates (avoids glitch when 500 ms work ran)
+   while (timer3Didtic)
    {
       timer3Didtic = false;
       motionController->pollAxis();
@@ -359,22 +403,29 @@ void loop()
          // Add other 10 Hz display / INA219 / UI updates here
       }
 
-      if (tempCounter >= 50) // every 500 ms
+      if (tempCounter >= 50) // every 500 ms - set flag only; do work outside so this block stays short
       {
          tempCounter = 0;
-         waterBathController.update();
-         waterBathCanAdapter.tick(millis());  // emit BATH_STATUS (0x280) every half second
-
-         WaterBathError err = waterBathController.getErrorCode();
-         // if (err == WaterBathError::BathSensorDisconnected)
-         //    USBSerial.print("WaterBath: bath sensor disconnected\t");
-         // else if (err != WaterBathError::None)
-         //    USBSerial.printf("WaterBath FAULT: %s\t", WaterBathController::errorToString(err));
-         // else
-         //    USBSerial.printf("Bath: %.1f C  Block: %.1f C  Heater: %s  Current: %.2f A\n",
-         //       waterBathController.getBathTempC(), waterBathController.getBlockTempC(),
-         //       waterBathController.isHeaterOn() ? "On" : "Off", waterBathController.getHeaterCurrentA());
+         needWaterBathUpdate = true;
       }
+   }
+
+   // 500 ms work outside timer3 block so it doesn't delay the next updatePositions()
+   if (needWaterBathUpdate)
+   {
+      needWaterBathUpdate = false;
+      //waterBathController.update();
+      //waterBathCanAdapter.tick(millis());  // emit BATH_STATUS (0x280) every half second
+
+      //WaterBathError err = waterBathController.getErrorCode();
+      // if (err == WaterBathError::BathSensorDisconnected)
+      //    USBSerial.print("WaterBath: bath sensor disconnected\t");
+      // else if (err != WaterBathError::None)
+      //    USBSerial.printf("WaterBath FAULT: %s\t", WaterBathController::errorToString(err));
+      // else
+      //    USBSerial.printf("Bath: %.1f C  Block: %.1f C  Heater: %s  Current: %.2f A\n",
+      //       waterBathController.getBathTempC(), waterBathController.getBlockTempC(),
+      //       waterBathController.isHeaterOn() ? "On" : "Off", waterBathController.getHeaterCurrentA());
    }
 
    twai_message_t rx_message;

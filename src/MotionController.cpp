@@ -250,7 +250,6 @@ void MotionController::moveRel(uint8_t axis, float distance, float targetSpeed)
    }
 
    addRelativeMove(axis, distance, targetSpeed);
-   axisArray[axis]->currentSpeed = axisArray[axis]->startFrequency;
    makeMoves();
 }
 
@@ -323,26 +322,29 @@ uint32_t MotionController::updatePositions()
          axisArray[primaryAxis]->currentSpeed = max((float)axisArray[primaryAxis]->currentSpeed - acceleration * timeStep, (float)initialSpeed);
       }
 
-      // Serial.print(distanceToStop);
-      // Serial.print("\t");
+      Serial.print(distanceToStop);
+      Serial.print("\t");
       // Serial.print(moveArray[moveIndex].type);
       // Serial.print("\t");
       // Serial.print(axisArray[primaryAxis]->direction);
       // Serial.print("\t");
-      // Serial.print(axisArray[primaryAxis]->currentSpeed);
-      // Serial.print("\t");
-      // Serial.print(axisArray[primaryAxis]->stepsToGo);
-      // Serial.print("\t");
-      // Serial.println(acceleration);
+      Serial.print(axisArray[primaryAxis]->currentSpeed);
+      Serial.print("\t");
+      Serial.print(axisArray[primaryAxis]->stepsToGo);
+      Serial.print("\t");
+      Serial.println(acceleration);
 
-      compareRegisterA = (baseFrequency / 8) / axisArray[primaryAxis]->currentSpeed - 1;
+      // ESP32 timer 4: alarm period in µs (1 tick = 1 µs). Step period = 1e6 / steps_per_sec.
+      const float US_PER_SEC = 1000000.0f;
+      float spd = (float)axisArray[primaryAxis]->currentSpeed;
+      stepPeriodUs = (spd > 0.0f) ? (uint32_t)(US_PER_SEC / spd) : (uint32_t)US_PER_SEC;
    }
    else
    {
       // Motion has stopped - check if we should disable motor at zero
       axisArray[primaryAxis]->checkAndDisableAtZero();
    }
-   return compareRegisterA;
+   return stepPeriodUs;
 }
 
 bool MotionController::isMoving()

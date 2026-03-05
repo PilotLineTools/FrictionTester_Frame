@@ -11,9 +11,9 @@
 #define CARRIAGE_ENABLE_PIN (GPIO_NUM_10) // IO10 Enable
 #define CARRIAGE_DIAG_PIN (GPIO_NUM_3)  // IO3 Diagnostic / StallGuard
 #define CARRIAGE_INVERT_DIRECTION (1)    // Inverts direction
-#define CARRIAGE_ACCEL (1500)             // mm/s^2
-#define CARRIAGE_STEPS_PER_UNIT (3200)  // Steps per revolution (200 steps/rev for 1.8° motors) divided by mm per revolution (e.g. 4 mm/rev leads to 50 steps/mm)
-#define CARRIAGE_START_SPEED (500)       // mm/min
+#define CARRIAGE_ACCEL (15)             // mm/s^2
+// CARRIAGE_STEPS_PER_UNIT = MOTOR_STEPS_PER_REV × CARRIAGE_TMC_MICROSTEPS (defined in TMC section below)
+#define CARRIAGE_START_SPEED (5)       // mm/min
 #define CARRIAGE_JOG_SPEED (3000)        // mm/min
 
 #define BATH_STEP_PIN (GPIO_NUM_36)   // IO36  Step
@@ -100,7 +100,9 @@ const double initialSpeed = 100;        // Initial speed in steps/sec
 #define CARRIAGE_TMC_ADDRESS (0)  // UART address 0
 #define CARRIAGE_TMC_RSENSE (0.100f)
 #define CARRIAGE_TMC_RMS_CURRENT_MA (400)
-#define CARRIAGE_TMC_MICROSTEPS (16)
+#define CARRIAGE_TMC_MICROSTEPS (8)
+// Carriage steps per unit (e.g. per rev): physical steps/rev × microsteps. Runtime microsteps: main.cpp carriageMicroSteps (MachineParameter).
+#define CARRIAGE_STEPS_PER_UNIT (MOTOR_STEPS_PER_REV * CARRIAGE_TMC_MICROSTEPS)
 
 // TMC2209 Configuration
 #define BATH_TMC_ADDRESS (1)  // UART address 1

@@ -45,7 +45,8 @@ private:
   Axis *axisArray[kMaxAxes];
   uint8_t primaryAxis;
   uint16_t targetSpeed;
-  uint16_t compareRegisterA = 65535;
+  /** Step period for ESP32 timer 4: next step in microseconds (1e6 / steps_per_sec). Written by updatePositions(), read by main loop for timerAlarmWrite(). */
+  uint32_t stepPeriodUs = 10000;
   int8_t moveIndex = 0;
   uint8_t axisCount = 0; // how many axis have been added
 
