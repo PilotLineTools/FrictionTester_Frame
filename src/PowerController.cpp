@@ -3,7 +3,7 @@
  *
  * Uses:
  *  - POWER_BUTTON_SIGNAL: user power button (active when LOW).
- *  - GUI_SHUTDOWN_PIN: remote GUI power / shutdown indication (HIGH = GUI on).
+ *  - CAN heartbeat (0x012): remote GUI alive indication.
  *  - POWER_HOLD_PIN: latch power (HIGH to hold on, LOW to cut).
  *  - LED_BUILTIN_PIN: power status LED.
  *
@@ -15,6 +15,7 @@
 // Button timing in ms
 static constexpr uint16_t POWER_BUTTON_PRESS_TIMEOUT_MS = 100;   // timeout between short presses
 static constexpr uint16_t POWER_BUTTON_HOLD_OFF_TIME_MS = 2000; // hold to request shutdown
+static constexpr uint32_t GUI_HEARTBEAT_TIMEOUT_MS = 3000;       // 1 s heartbeat + jitter margin
 
 // LED blink intervals in ms
 static constexpr uint16_t LED_BLINK_FAST_MS = 200;
@@ -27,7 +28,6 @@ PowerController::PowerController()
     digitalWrite(POWER_HOLD_PIN, HIGH); // latch power on at boot
 
     pinMode(POWER_BUTTON_SIGNAL, INPUT);
-    pinMode(GUI_SHUTDOWN_PIN, INPUT_PULLUP);
     pinMode(LED_BUILTIN_PIN, OUTPUT);
     digitalWrite(LED_BUILTIN_PIN, _powerLED);
 }
@@ -40,12 +40,18 @@ void PowerController::poll10ms()
 
     // Button assumed active HIGH (pressed when reading HIGH)
     _powerButtonIsPushed = (digitalRead(POWER_BUTTON_SIGNAL) == HIGH) ? 1 : 0;
-    // GUI_SHUTDOWN_PIN: LOW = GUI powered on / running, HIGH = GUI off / shutdown
-    bool guiOn = (digitalRead(GUI_SHUTDOWN_PIN) == LOW);
+    bool guiOn = isGuiAliveNow();
 
     // Button edge/hold debug (runs regardless of GUI power state)
     const bool justPressed  = (_powerButtonIsPushed && !_previousPowerButtonIsPushed);
     const bool justReleased = (!_powerButtonIsPushed && _previousPowerButtonIsPushed);
+
+    // Heartbeat timeout means GUI is no longer alive; reflect that in state.
+    if (!guiOn &&
+        (_guiPowerState == GuiPowerState::BOOTING_UP || _guiPowerState == GuiPowerState::ACTIVE))
+    {
+        _guiPowerState = GuiPowerState::OFF;
+    }
 
     if (justPressed)
     {
@@ -159,12 +165,84 @@ void PowerController::poll10ms()
     case GuiPowerState::SHUT_DOWN:
         _powerLED = 0;
         digitalWrite(POWER_HOLD_PIN, LOW); // cut power
+        if (!guiOn)
+            _guiPowerState = GuiPowerState::OFF;
         break;
     }
 
     _previousPowerButtonIsPushed = _powerButtonIsPushed;
     digitalWrite(LED_BUILTIN_PIN, _powerLED);
 }
+
+void PowerController::requestShutdownFromRemote()
+{
+    bool guiOn = isGuiAliveNow();
+    if (!guiOn)
+    {
+        emit(Notification::ShutdownRequested);
+        _guiPowerState = GuiPowerState::SHUT_DOWN;
+        return;
+    }
+
+    if (_guiPowerState != GuiPowerState::SHUTTING_DOWN &&
+        _guiPowerState != GuiPowerState::SHUT_DOWN)
+    {
+        _guiPowerState = GuiPowerState::SHUTTING_DOWN;
+        emit(Notification::ShutdownRequested);
+    }
+}
+
+void PowerController::onGuiHeartbeat(uint32_t nowMs)
+{
+    _lastGuiHeartbeatMs = nowMs;
+    _guiHeartbeatSeen = true;
+}
+
+bool PowerController::isGuiSignalOn() const
+{
+    return isGuiAliveNow();
+}
+
+bool PowerController::isGuiAliveNow() const
+{
+    if (!_guiHeartbeatSeen)
+        return false;
+    return (millis() - _lastGuiHeartbeatMs) <= GUI_HEARTBEAT_TIMEOUT_MS;
+}
+
+bool PowerController::clearFaultToActiveIfShuttingDown()
+{
+
+    if (_guiPowerState == GuiPowerState::SHUTTING_DOWN)
+    {
+        setGuiPowerStateCode(static_cast<uint8_t>(GuiPowerState::ACTIVE));
+        emit(Notification::ShutdownAborted); // optional
+        return true;
+    }
+    return false;
+}
+
+bool PowerController::setGuiPowerStateCode(uint8_t code)
+{
+    switch (static_cast<GuiPowerState>(code))
+    {
+    case GuiPowerState::OFF:
+    case GuiPowerState::BOOTING_UP:
+    case GuiPowerState::ACTIVE:
+    case GuiPowerState::SHUTTING_DOWN:
+    case GuiPowerState::SHUT_DOWN:
+        _guiPowerState = static_cast<GuiPowerState>(code);
+        if (_guiPowerState == GuiPowerState::ACTIVE)
+        {
+            _powerLED = 1;
+            _powerLEDTimerMs = 0;
+        }
+        return true;
+    default:
+        return false;
+    }
+}
+
 
 void PowerController::checkStartupState(bool guiOn)
 {
@@ -177,4 +255,3 @@ void PowerController::checkStartupState(bool guiOn)
         }
     }
 }
-

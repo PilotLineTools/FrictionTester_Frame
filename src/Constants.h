@@ -139,6 +139,13 @@ const double initialSpeed = 100;        // Initial speed in steps/sec
 #define HEATER_FET_PIN GPIO_NUM_1       // FET gate for heater (PWM)
 #define BATH_TEMP_DQ_PIN GPIO_NUM_9    // 1-Wire data for bath temperature sensor (DS18B20)
 #define HEATER_BLOCK_THERMISTOR_PIN GPIO_NUM_13  // ADC-capable pin for heater block NTC thermistor
+#define THERMISTOR_TEST_LOG (1)                  // 1 = print thermistor raw/converted debug logs
+// Thermistor conversion parameters (TEWA TT7-10KC3-11 + 4.7k pull-up)
+#define THERM_ADC_REFERENCE_V (3.3f)
+#define THERM_NUM_SAMPLES (16)
+#define THERM_SERIES_RESISTOR_OHM (4700.0f)
+#define THERM_R0_OHM (10000.0f)       // Resistance at 25C
+#define THERM_BETA (3977.0f)           // Beta (25/85)
 
 // Water bath controller limits (tunable; heater shuts down and reports error if exceeded)
 #define WATER_BATH_HEATER_CURRENT_MIN_A (6.0f)   // Below this = fault (e.g. open circuit)

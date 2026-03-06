@@ -7,13 +7,9 @@
 #include "Motor.h"
 #include "TMC2209Driver.h"
 
-// NTC thermistor: 10k @ 25°C, B = 3950, series resistor 10k to 3.3V, NTC to GND
-#define NTC_R0 10000.0f
+// NTC thermistor: 10k @ 25C, Beta(25/85)=3977, series resistor 4.7k to 3.3V, NTC to GND.
 #define NTC_T0 298.15f   // 25°C in K
-#define NTC_B 3950.0f
-#define NTC_SERIES_R 10000.0f
 #define ADC_MAX 4095.0f
-#define ADC_VREF 3.3f
 
 WaterBathController::WaterBathController(int heaterPin,
                                          DallasTemperature *bathSensor,
@@ -73,6 +69,13 @@ void WaterBathController::setCirculatorHardware(Motor *motor, TMC2209Driver *dri
    _circulatorDriver = driver;
 }
 
+void WaterBathController::setHeaterEnableRequest(bool enable)
+{
+   _heaterRequestEnabled = enable;
+   if (!enable)
+      setHeaterOn(false);
+}
+
 void WaterBathController::setCirculatorTargetRpm(float rpm)
 {
    if (rpm < 0.0f)
@@ -90,7 +93,7 @@ void WaterBathController::setPid(float kp, float ki, float kd)
 
 void WaterBathController::setHeaterOn(bool on)
 {
-   if (!_enabled || _errorCode != WaterBathError::None)
+   if (!_enabled || !_heaterRequestEnabled || _errorCode != WaterBathError::None)
       on = false;
 
    _heaterOn = on;
@@ -111,21 +114,41 @@ void WaterBathController::disableHeater()
 
 float WaterBathController::readBlockTempC()
 {
-   int raw = analogRead(_blockThermistorPin);
-   if (raw <= 0 || raw >= ADC_MAX)
+   uint32_t rawSum = 0;
+   for (int i = 0; i < THERM_NUM_SAMPLES; ++i)
+      rawSum += (uint32_t)analogRead(_blockThermistorPin);
+
+   float raw = (float)rawSum / (float)THERM_NUM_SAMPLES;
+   if (raw <= 0.0f || raw >= ADC_MAX)
+   {
+#if THERMISTOR_TEST_LOG
+      //USBSerial.printf("THERM TEST invalid raw=%.1f pin=%d\n", raw, _blockThermistorPin);
+#endif
       return -100.0f; // invalid
+   }
 
-   float v = (float)raw / ADC_MAX * ADC_VREF;
-   float r_ntc = (ADC_VREF - v) > 0.01f ? (v * NTC_SERIES_R / (ADC_VREF - v)) : NTC_R0;
+   float v = raw / ADC_MAX * THERM_ADC_REFERENCE_V;
+   float r_ntc = (THERM_ADC_REFERENCE_V - v) > 0.01f
+                    ? (v * THERM_SERIES_RESISTOR_OHM / (THERM_ADC_REFERENCE_V - v))
+                    : THERM_R0_OHM;
 
-   float ln_r = logf(r_ntc / NTC_R0);
-   float t_k = 1.0f / (1.0f / NTC_T0 + ln_r / NTC_B);
-   return t_k - 273.15f;
+   float ln_r = logf(r_ntc / THERM_R0_OHM);
+   float t_k = 1.0f / (1.0f / NTC_T0 + ln_r / THERM_BETA);
+   float tempC = t_k - 273.15f;
+
+#if THERMISTOR_TEST_LOG
+   //USBSerial.printf("THERM TEST raw=%.1f v=%.3fV r=%.1fOhm temp=%.2fC pin=%d\n",
+   //                 raw, v, r_ntc, tempC, _blockThermistorPin);
+#endif
+
+   return tempC;
 }
 
 void WaterBathController::applyCirculator()
 {
-   float rpm = (_enabled && _errorCode == WaterBathError::None) ? _circulatorTargetRpm : 0.0f;
+   // Circulator follows commanded RPM whenever controller is enabled.
+   // This is intentionally independent from heater request/errors.
+   float rpm = _enabled ? _circulatorTargetRpm : 0.0f;
 
    if (_circulatorDriver != nullptr)
       _circulatorDriver->setRpmActual(rpm);
@@ -176,7 +199,8 @@ void WaterBathController::update()
       setHeaterOn(false);
    }
 
-   // Case 3: Heater current too low (possible open circuit) when heater is on
+   // Case 3: Heater current too low (possible open circuit)
+   /*
    else if (_heaterCurrentA < _heaterCurrentMinA && _heaterOn)
    {
       _errorCode = WaterBathError::HeaterCurrentLow;
@@ -185,6 +209,7 @@ void WaterBathController::update()
       _pidOutput = 0.0f;
       setHeaterOn(false);
    }
+   
 
    // Case 4: Block over-temperature
    else if (_blockTempC > _blockTempMaxC)
@@ -195,30 +220,26 @@ void WaterBathController::update()
       _pidOutput = 0.0f;
       setHeaterOn(false);
    }
+   */
 
    // No faults, apply PID: output 0–1, threshold at 0.5 for on/off (one decision per 500 ms cycle)
    else
    {
       _errorCode = WaterBathError::None;
-      float error = _targetTempC - _bathTempC;
-
-      float p = _kp * error;
-      _integral += _ki * error * _dt;
-      if (_integral > _integralMax)
-         _integral = _integralMax;
-      else if (_integral < -_integralMax)
-         _integral = -_integralMax;
-      float d = _kd * (error - _lastError) / _dt;
-      _lastError = error;
-
-      float output = p + _integral + d;
-      if (output < 0.0f)
-         output = 0.0f;
-      if (output > 1.0f)
-         output = 1.0f;
-
-      _pidOutput = output;
-      setHeaterOn(output > 0.5f);
+      if (!_heaterRequestEnabled)
+      {
+         _heaterOn = false;
+      }
+      else
+      {
+         // Heater control logic with deadband
+         // Heater on if bath temp is below target - deadband, off if above target + deadband
+         if (_bathTempC < _targetTempC - _deadbandC)
+            _heaterOn = true;
+         else if (_bathTempC > _targetTempC + _deadbandC)
+            _heaterOn = false;
+      }
+      setHeaterOn(_heaterOn);
    }
 
    _bathSensor->requestTemperatures();  // for next update()

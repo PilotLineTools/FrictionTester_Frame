@@ -68,6 +68,8 @@ void WaterBathCanAdapter::handleSetWaterBath(const twai_message_t *msg)
    int16_t temp_C_x100 = unpackI16LE(&d[1]);
    uint8_t circulator_speed = d[3];
    float targetC = (float)temp_C_x100 / 100.0f;
+   const bool heaterRequested = (heater_enable_request != 0);
+   const float circulatorRpmRequest = (float)circulator_speed;
 
    USBSerial.printf("WB FLOW[%lu] RX SET_WATER_BATH heater_req=%u target=%.2fC circ_req=%u\n",
                     (unsigned long)seq,
@@ -76,21 +78,21 @@ void WaterBathCanAdapter::handleSetWaterBath(const twai_message_t *msg)
                     (unsigned)circulator_speed);
 
    _controller->setTargetTemp(targetC);
+   _controller->setHeaterEnableRequest(heaterRequested);
+   _controller->setCirculatorTargetRpm(circulatorRpmRequest);
 
-   if (heater_enable_request)
-   {
-      _controller->setCirculatorTargetRpm((float)circulator_speed);
-      _controller->enable();
-   }
-   else
-   {
-      _controller->setCirculatorTargetRpm(0.0f);
+   // Controller is active when either output is requested.
+   // If both heater and circulator are off, disable controller.
+   if (!heaterRequested && (circulator_speed == 0))
       _controller->disable();
-   }
+   else
+      _controller->enable();
 
-   USBSerial.printf("WB FLOW[%lu] after_cmd enabled=%u heater_var=%u err=%u\n",
+   USBSerial.printf("WB FLOW[%lu] after_cmd enabled=%u heater_req=%u circ_req=%.1f heater_var=%u err=%u\n",
                     (unsigned long)seq,
                     (unsigned)_controller->isEnabled(),
+                    (unsigned)_controller->isHeaterEnableRequested(),
+                    circulatorRpmRequest,
                     (unsigned)_controller->isHeaterOn(),
                     (unsigned)_controller->getErrorCode());
 
