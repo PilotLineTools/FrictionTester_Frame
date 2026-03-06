@@ -176,10 +176,21 @@ void CarriageCanAdapter::handleJog(const twai_message_t *msg)
    if (!_controller)
       return;
 
+   // Get first 2 bytes as signed int16 speed in mm/s * 100; ignore rest of payload
+   // Convert to float mm/min and jog at that speed. If speed is zero, stop jogging.
+   // Note: the speed is a request, and the controller may jog at a different actual
+
+   int16_t speed_x100 = unpackI16LE(&msg->data[0]);
+   float velocityMmS = (float)speed_x100 / 100.0f;
+   float velocityMmMin = velocityMmS * 60.0f;
+
+   USBSerial.printf("CAN carriage: JOG velocity=%.2f mm/s (%.2f mm/min)\n", velocityMmS, velocityMmMin);
+   _controller->jogMmPerS(velocityMmS);
+
    // Testing mode: ignore incoming payload and always jog at a fixed speed.
-   constexpr float kTestJogMmPerS = 2.0f; // ~1000 mm/min
-   USBSerial.printf("CAN carriage: JOG test speed=%.2f mm/s\n", kTestJogMmPerS);
-   _controller->jogMmPerS(kTestJogMmPerS);
+   // constexpr float kTestJogMmPerS = 2.0f; // ~1000 mm/min
+   // USBSerial.printf("CAN carriage: JOG test speed=%.2f mm/s\n", kTestJogMmPerS);
+   // _controller->jogMmPerS(kTestJogMmPerS);
 }
 
 void CarriageCanAdapter::handleHome(const twai_message_t *msg)

@@ -321,18 +321,35 @@ uint32_t MotionController::updatePositions()
          acceleration = calculateAcceleration(axisArray[primaryAxis]->stepsToGo);
          axisArray[primaryAxis]->currentSpeed = max((float)axisArray[primaryAxis]->currentSpeed - acceleration * timeStep, (float)initialSpeed);
       }
+      // ===================================
+      // Debug logs for updatePositions
+      // Prints the primary axis, distance to stop, current direction, 
+      // current speed, steps to go, and acceleration every time updatePositions 
+      // is called and the axis is moving. 
+      // ===================================
+      /*
+      USBSerial.print("MotionController::updatePositions() - primaryAxis = ");
+      USBSerial.print(primaryAxis);
+      USBSerial.print("\n");
 
-      // Serial.print(distanceToStop);
-      // Serial.print("\t");
+      USBSerial.print("distanceToStop=");
+      USBSerial.print(distanceToStop);
+      USBSerial.print("\t");
       // Serial.print(moveArray[moveIndex].type);
       // Serial.print("\t");
-      // Serial.print(axisArray[primaryAxis]->direction);
-      // Serial.print("\t");
-      // Serial.print(axisArray[primaryAxis]->currentSpeed);
-      // Serial.print("\t");
-      // Serial.print(axisArray[primaryAxis]->stepsToGo);
-      // Serial.print("\t");
-      // Serial.println(acceleration);
+      
+      USBSerial.print("currentDirection=");
+      USBSerial.print(axisArray[primaryAxis]->direction);
+      USBSerial.print("\t");
+      USBSerial.print("currentSpeed=");
+      USBSerial.print(axisArray[primaryAxis]->currentSpeed);
+      USBSerial.print("\t");
+      USBSerial.print("stepsToGo=");
+      USBSerial.print(axisArray[primaryAxis]->stepsToGo);
+      USBSerial.print("\t");
+      USBSerial.print("acceleration=");
+      USBSerial.println(acceleration);
+      */
 
       // ESP32 timer 4: alarm period in µs (1 tick = 1 µs). Step period = 1e6 / steps_per_sec.
       const float US_PER_SEC = 1000000.0f;

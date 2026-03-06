@@ -30,7 +30,7 @@ void PowerCanAdapter::tick(uint32_t nowMs)
 
    if (nowMs - _lastStatusMs >= _statusIntervalMs)
    {
-      sendPowerStatus(0);
+      //sendPowerStatus(0);     
       _lastStatusMs = nowMs;
    }
 }
@@ -48,13 +48,13 @@ void PowerCanAdapter::onPowerNotification(PowerController::Notification n)
       break;
    case PowerController::Notification::ShutdownRequested:
       eventCode = 3;
+      sendPowerStatus(eventCode);
       break;
    case PowerController::Notification::ShutdownAborted:
       eventCode = 4;
+      sendPowerStatus(eventCode);
       break;
    }
-
-   sendPowerStatus(eventCode);
 }
 
 void PowerCanAdapter::staticHandleSetPower(const twai_message_t *msg, void *ctx)

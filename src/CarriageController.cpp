@@ -38,9 +38,10 @@ void CarriageController::jogMmPerS(float velocityMmS)
       return;
    }
 
-   float speed = fabsf(velocityMmS);
-   float distance = (velocityMmS > 0.0f) ? 1.0f : -1.0f;
-   _motionController->moveRel(AxisId::Carriage, distance, 32000);
+   float speed = fabsf(velocityMmS); 
+   int distance_with_direction = (velocityMmS > 0.0f) ? _defaultJogDistance : -_defaultJogDistance;
+
+   _motionController->moveRel(AxisId::Carriage, distance_with_direction, speed); 
 }
 
 void CarriageController::homeMmPerS(float velocityMmS)
