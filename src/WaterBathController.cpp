@@ -1,6 +1,6 @@
 /**
  * WaterBathController - Implementation.
- * On/off bath temperature control with heater current and block overtemp protection.
+ * PID bath temperature control with heater current and block overtemp protection.
  */
 
 #include "WaterBathController.h"
@@ -81,31 +81,31 @@ void WaterBathController::setCirculatorTargetRpm(float rpm)
    applyCirculator();
 }
 
+void WaterBathController::setPid(float kp, float ki, float kd)
+{
+   _kp = kp;
+   _ki = ki;
+   _kd = kd;
+}
+
 void WaterBathController::setHeaterOn(bool on)
 {
-   const bool requestedOn = on;
    if (!_enabled || _errorCode != WaterBathError::None)
       on = false;
-   
+
    _heaterOn = on;
-   uint8_t pinLevel = on ? HIGH : LOW;
-   digitalWrite(_heaterPin, pinLevel);
-   // USBSerial.printf("WB FLOW heater apply requested=%u applied=%u enabled=%u err=%u pin=%u\n",
-   //                  (unsigned)requestedOn,
-   //                  (unsigned)on,
-   //                  (unsigned)_enabled,
-   //                  (unsigned)_errorCode,
-   //                  (unsigned)pinLevel);
+   digitalWrite(_heaterPin, on ? HIGH : LOW);
 }
 
 void WaterBathController::enableHeater()
 {
-   // Do not force ON here; apply the currently requested heater state.
    setHeaterOn(_heaterOn);
 }
 
 void WaterBathController::disableHeater()
 {
+   _integral = 0.0f;
+   _lastError = 0.0f;
    setHeaterOn(false);
 }
 
@@ -160,22 +160,29 @@ void WaterBathController::update()
    if (_bathTempC <= -127.0f || _bathTempC >= 85.0f)
    {
       _errorCode = WaterBathError::BathSensorDisconnected;
+      _integral = 0.0f;
+      _lastError = 0.0f;
+      _pidOutput = 0.0f;
       setHeaterOn(false);
    }
-
-   /**/
 
    // Case 2: Heater current out of limits
    else if (_heaterCurrentA > _heaterCurrentMaxA)
    {
       _errorCode = WaterBathError::HeaterCurrentHigh;
+      _integral = 0.0f;
+      _lastError = 0.0f;
+      _pidOutput = 0.0f;
       setHeaterOn(false);
    }
 
-   // Case 3: Heater current too low (possible open circuit)
+   // Case 3: Heater current too low (possible open circuit) when heater is on
    else if (_heaterCurrentA < _heaterCurrentMinA && _heaterOn)
    {
       _errorCode = WaterBathError::HeaterCurrentLow;
+      _integral = 0.0f;
+      _lastError = 0.0f;
+      _pidOutput = 0.0f;
       setHeaterOn(false);
    }
 
@@ -183,20 +190,35 @@ void WaterBathController::update()
    else if (_blockTempC > _blockTempMaxC)
    {
       _errorCode = WaterBathError::BlockOvertemp;
+      _integral = 0.0f;
+      _lastError = 0.0f;
+      _pidOutput = 0.0f;
       setHeaterOn(false);
    }
 
-   // No faults, apply normal control logic
+   // No faults, apply PID: output 0–1, threshold at 0.5 for on/off (one decision per 500 ms cycle)
    else
    {
       _errorCode = WaterBathError::None;
-      // Heater control logic with deadband
-      // Heater on if bath temp is below target - deadband, off if above target + deadband
-      if (_bathTempC < _targetTempC - _deadbandC)
-         _heaterOn = true;
-      else if (_bathTempC > _targetTempC + _deadbandC)
-         _heaterOn = false;
-      setHeaterOn(_heaterOn);
+      float error = _targetTempC - _bathTempC;
+
+      float p = _kp * error;
+      _integral += _ki * error * _dt;
+      if (_integral > _integralMax)
+         _integral = _integralMax;
+      else if (_integral < -_integralMax)
+         _integral = -_integralMax;
+      float d = _kd * (error - _lastError) / _dt;
+      _lastError = error;
+
+      float output = p + _integral + d;
+      if (output < 0.0f)
+         output = 0.0f;
+      if (output > 1.0f)
+         output = 1.0f;
+
+      _pidOutput = output;
+      setHeaterOn(output > 0.5f);
    }
 
    _bathSensor->requestTemperatures();  // for next update()

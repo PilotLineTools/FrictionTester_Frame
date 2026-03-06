@@ -1,8 +1,8 @@
 /**
- * WaterBathController - On/off temperature control for water bath with safety limits.
+ * WaterBathController - PID temperature control for water bath with safety limits.
  *
- * - On/off (bang-bang) regulation: heater on when bath below target, off when above (with deadband).
- * - Heater driven via MOSFET (digital on/off on HEATER_FET_PIN), updated every ~500 ms.
+ * - PID output (0–1) thresholded to on/off each 500 ms cycle (relay-friendly, no fast cycling).
+ * - Heater driven via digital on/off on HEATER_FET_PIN, updated every ~500 ms.
  * - INA219 monitors heater current; shuts down + error if out of bounds.
  * - Heater block thermistor: shutdown + fault if over limit.
  * - Circulator (TMC-driven) is controlled directly by WaterBathController via configured motor/driver pointers.
@@ -63,9 +63,12 @@ public:
    void setBlockTempLimit(float tempC);
    float getBlockTempLimit() const { return _blockTempMaxC; }
 
-   /** Deadband around target (°C). Heater on when bath < target - deadband, off when > target + deadband. Default 0.5. */
-   void setDeadband(float deadbandC) { _deadbandC = deadbandC; }
-   float getDeadband() const { return _deadbandC; }
+   /** PID gains. Defaults: Kp=5, Ki=0.2, Kd=0.5. */
+   void setPid(float kp, float ki, float kd);
+   void getPid(float &kp, float &ki, float &kd) const { kp = _kp; ki = _ki; kd = _kd; }
+
+   /** Integral term (for tuning/debug). Reset on fault or disable. */
+   float getIntegral() const { return _integral; }
 
    /**
     * Call every ~500 ms. Reads bath temp (DS18B20), block thermistor, and heater current;
@@ -85,8 +88,8 @@ public:
    float getBlockTempC() const { return _blockTempC; }
    /** Last read heater current (A). */
    float getHeaterCurrentA() const { return _heaterCurrentA; }
-   /** Heater state: 1 = on, 0 = off (for display/compatibility). */
-   float getHeaterDuty() const { return _heaterOn ? 1.0f : 0.0f; }
+   /** Last PID output 0–1 (before threshold). For display/tuning. */
+   float getHeaterDuty() const { return _pidOutput; }
    bool isHeaterOn() const { return _heaterOn; }
 
    /** Configure circulator hardware controlled by this controller. */
@@ -106,12 +109,20 @@ private:
    float _heaterCurrentMinA = WATER_BATH_HEATER_CURRENT_MIN_A;
    float _heaterCurrentMaxA = WATER_BATH_HEATER_CURRENT_MAX_A;
    float _blockTempMaxC = WATER_BATH_BLOCK_TEMP_MAX_C;
-   float _deadbandC = 0.5f;
+
+   float _kp = 5.0f;
+   float _ki = 0.2f;
+   float _kd = 0.5f;
+   float _integral = 0.0f;
+   float _lastError = 0.0f;
+   static constexpr float _dt = 0.5f;  // update interval (s)
+   static constexpr float _integralMax = 50.0f;  // anti-windup
 
    float _bathTempC = 0.0f;
    float _blockTempC = 0.0f;
    float _heaterCurrentA = 0.0f;
-   bool _heaterOn = false;
+   float _pidOutput = 0.0f;   // last PID output 0–1
+   bool _heaterOn = false;    // relay state this cycle
 
    WaterBathError _errorCode = WaterBathError::None;
    Motor *_circulatorMotor = nullptr;

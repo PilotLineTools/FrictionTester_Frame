@@ -211,7 +211,6 @@ void setup()
    pinMode(HEATER_FET_PIN, OUTPUT);
    digitalWrite(HEATER_FET_PIN, LOW); // startup failsafe: keep heater off
 
-
    USBSerial.begin(115200);
    USBSerial.setTimeout(2000);
 
@@ -244,7 +243,7 @@ void setup()
    globalMC = motionController;
 
    // Create axis objects; carriage stepsPerUnit = 200 × carriageMicroSteps (from NVS/default)
-   carriageAxis = new Axis(CARRIAGE_ACCEL, (float)(MOTOR_STEPS_PER_REV * carriageMicroSteps.value), CARRIAGE_START_SPEED);
+   carriageAxis = new Axis(CARRIAGE_ACCEL, (float)(MOTOR_STEPS_PER_REV * carriageMicroSteps.value / CARRIAGE_LEADSCREW_PITCH), CARRIAGE_START_SPEED);
 
    // Create motor object
    carriageMotor = new Motor(CARRIAGE_STEP_PIN, CARRIAGE_DIR_PIN, CARRIAGE_ENABLE_PIN, 1, CARRIAGE_INVERT_DIRECTION);
@@ -414,10 +413,10 @@ void loop()
    if (needWaterBathUpdate)
    {
       needWaterBathUpdate = false;
-      //waterBathController.update();
-      //waterBathCanAdapter.tick(millis());  // emit BATH_STATUS (0x280) every half second
+      waterBathController.update();
+      waterBathCanAdapter.tick(millis());  // emit BATH_STATUS (0x280) every half second
 
-      //WaterBathError err = waterBathController.getErrorCode();
+      WaterBathError err = waterBathController.getErrorCode();
       // if (err == WaterBathError::BathSensorDisconnected)
       //    USBSerial.print("WaterBath: bath sensor disconnected\t");
       // else if (err != WaterBathError::None)

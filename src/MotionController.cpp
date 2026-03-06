@@ -164,7 +164,7 @@ uint32_t MotionController::loadMove()
 
 void MotionController::addRelativeMove(uint8_t axis, float distance, float targetSpeed)
 {
-   USBSerial.printf("#### addRelativeMove #####");
+   // USBSerial.printf("#### addRelativeMove #####");
    if (axisArray[axis] == nullptr)
    {
       USBSerial.printf("ERROR: Null axis pointer in moveRel - axis=%d\n", axis);
@@ -218,7 +218,7 @@ uint8_t MotionController::makeMoves()
 
 void MotionController::moveRel(uint8_t axis, float distance, float targetSpeed)
 {
-   USBSerial.printf("FUNCTION: moveRel\n");
+   // USBSerial.printf("FUNCTION: moveRel\n");
    if (axis >= kMaxAxes)
    {
       USBSerial.printf("ERROR: Invalid axis index in moveRel maxAxes=%u\n", (unsigned)kMaxAxes);
@@ -322,17 +322,17 @@ uint32_t MotionController::updatePositions()
          axisArray[primaryAxis]->currentSpeed = max((float)axisArray[primaryAxis]->currentSpeed - acceleration * timeStep, (float)initialSpeed);
       }
 
-      Serial.print(distanceToStop);
-      Serial.print("\t");
+      // Serial.print(distanceToStop);
+      // Serial.print("\t");
       // Serial.print(moveArray[moveIndex].type);
       // Serial.print("\t");
       // Serial.print(axisArray[primaryAxis]->direction);
       // Serial.print("\t");
-      Serial.print(axisArray[primaryAxis]->currentSpeed);
-      Serial.print("\t");
-      Serial.print(axisArray[primaryAxis]->stepsToGo);
-      Serial.print("\t");
-      Serial.println(acceleration);
+      // Serial.print(axisArray[primaryAxis]->currentSpeed);
+      // Serial.print("\t");
+      // Serial.print(axisArray[primaryAxis]->stepsToGo);
+      // Serial.print("\t");
+      // Serial.println(acceleration);
 
       // ESP32 timer 4: alarm period in µs (1 tick = 1 µs). Step period = 1e6 / steps_per_sec.
       const float US_PER_SEC = 1000000.0f;
