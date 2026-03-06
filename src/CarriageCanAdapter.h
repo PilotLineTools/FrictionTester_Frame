@@ -34,7 +34,7 @@ private:
    CarriageController *_controller;
    ICanRouter *_router;
    FrameCanAdapter *_frameCan;
-   float _defaultSpeed = 1000.0f;
+   float _defaultSpeed = 3000.0f;
 
    static void staticHandleMoveRel(const twai_message_t *msg, void *ctx);
    static void staticHandleMoveAbs(const twai_message_t *msg, void *ctx);

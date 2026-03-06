@@ -172,16 +172,14 @@ void CarriageCanAdapter::handleSetAcceleration(const twai_message_t *msg)
 
 void CarriageCanAdapter::handleJog(const twai_message_t *msg)
 {
+   (void)msg;
    if (!_controller)
       return;
-   if (_mode == SystemMode::FW_UPDATE)
-      return;
-   if (msg->data_length_code != 8)
-      return;
 
-   int16_t vel_x100 = unpackI16LE(&msg->data[0]);
-   float vel = (float)vel_x100 / 100.0f;
-   _controller->jogMmPerS(vel);
+   // Testing mode: ignore incoming payload and always jog at a fixed speed.
+   constexpr float kTestJogMmPerS = 2.0f; // ~1000 mm/min
+   USBSerial.printf("CAN carriage: JOG test speed=%.2f mm/s\n", kTestJogMmPerS);
+   _controller->jogMmPerS(kTestJogMmPerS);
 }
 
 void CarriageCanAdapter::handleHome(const twai_message_t *msg)

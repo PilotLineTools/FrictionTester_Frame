@@ -35,6 +35,7 @@
 #include "CarriageCanAdapter.h"
 #include "CanRouter.h"
 #include "PowerController.h"
+#include "PowerCanAdapter.h"
 
 // ---------------------------------------------------------------------------
 // Forward declarations (implementations below)
@@ -133,6 +134,10 @@ TMC2209Driver *TMC2209_carriageDriver = nullptr;
 TMC2209Stepper TMC2209_bath(&TMCSerial, BATH_TMC_RSENSE, BATH_TMC_ADDRESS);
 TMC2209Driver *TMC2209_bathDriver = nullptr;
 
+// Temporary bring-up override: force bath circulator motor on continuously.
+static const bool FORCE_BATH_CIRCULATOR_ON = false;
+static const float FORCE_BATH_CIRCULATOR_RPM = 300.0f;
+
 
 // ---------------------------------------------------------------------------
 // Timer ISRs
@@ -162,9 +167,13 @@ WaterBathCanAdapter waterBathCanAdapter(&waterBathController, &canRouter, &frame
 CarriageController *carriageController = nullptr;
 CarriageCanAdapter *carriageCanAdapter = nullptr;
 PowerController *powerController = nullptr;
+PowerCanAdapter *powerCanAdapter = nullptr;
 
 static void handlePowerNotification(PowerController::Notification n)
 {
+   if (powerCanAdapter)
+      powerCanAdapter->onPowerNotification(n);
+
    switch (n)
    {
    case PowerController::Notification::GUIPoweredOn:
@@ -187,6 +196,9 @@ static void handlePowerNotification(PowerController::Notification n)
 
 static void logCanRxFrame(const twai_message_t &msg)
 {
+   if ((msg.identifier & 0x7FF) == CAN_ID_GUI_HEARTBEAT)
+      return;
+
    USBSerial.printf("CAN RX id=0x%03lX dlc=%u data=", (unsigned long)(msg.identifier & 0x7FF), (unsigned)msg.data_length_code);
    for (uint8_t i = 0; i < msg.data_length_code; i++)
       USBSerial.printf("%02X%s", msg.data[i], (i + 1 < msg.data_length_code) ? " " : "");
@@ -213,7 +225,6 @@ void setup()
 
 
    USBSerial.begin(115200);
-   USBSerial.setTimeout(2000);
 
    strcpy(swVer, VERSION_STRING);
    delay(100);
@@ -342,12 +353,16 @@ void setup()
    waterBathController.init();
    waterBathController.setCirculatorHardware(bathMotor, TMC2209_bathDriver);
    waterBathController.setTargetTemp(30.0f);   // default target °C
-   waterBathController.disable();              // explicit boot state: heater/circulator off
+   waterBathController.setHeaterEnableRequest(false);
+   waterBathController.setCirculatorTargetRpm(0.0f);
+   waterBathController.disable();              // both outputs off at boot -> controller disabled
 
    frameCanAdapter.begin();
    waterBathCanAdapter.begin();
 
    powerController = PowerController::setup(handlePowerNotification);
+   powerCanAdapter = new PowerCanAdapter(powerController, &canRouter, &frameCanAdapter);
+   powerCanAdapter->begin();
    carriageController = new CarriageController(motionController, carriageAxis);
    carriageCanAdapter = new CarriageCanAdapter(carriageController, &canRouter, &frameCanAdapter);
    carriageCanAdapter->begin();
@@ -396,6 +411,8 @@ void loop()
       tempCounter++;
       if (powerController)
          powerController->poll10ms();
+      if (powerCanAdapter)
+         powerCanAdapter->tick(millis());
 
       if (displayCounter >= DISPLAY_SLOWER) // 10 Hz
       {
@@ -442,6 +459,8 @@ void loop()
    if (frameCanAdapter.consumeModeChange(mode))
    {
       waterBathCanAdapter.onModeChanged(mode);
+      if (powerCanAdapter)
+         powerCanAdapter->onModeChanged(mode);
       if (carriageCanAdapter)
          carriageCanAdapter->onModeChanged(mode);
    }

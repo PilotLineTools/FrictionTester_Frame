@@ -91,6 +91,9 @@ public:
 
    /** Configure circulator hardware controlled by this controller. */
    void setCirculatorHardware(Motor *motor, TMC2209Driver *driver);
+   /** Request heater permission from command layer (independent of controller master enabled). */
+   void setHeaterEnableRequest(bool enable);
+   bool isHeaterEnableRequested() const { return _heaterRequestEnabled; }
    /** Requested circulator RPM from command layer. Applied only when controller is enabled and fault-free. */
    void setCirculatorTargetRpm(float rpm);
    float getCirculatorTargetRpm() const { return _circulatorTargetRpm; }
@@ -112,6 +115,7 @@ private:
    float _blockTempC = 0.0f;
    float _heaterCurrentA = 0.0f;
    bool _heaterOn = false;
+   bool _heaterRequestEnabled = false;
 
    WaterBathError _errorCode = WaterBathError::None;
    Motor *_circulatorMotor = nullptr;

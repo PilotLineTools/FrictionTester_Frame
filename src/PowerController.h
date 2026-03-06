@@ -3,7 +3,7 @@
  *
  * - Latches power via POWER_HOLD_PIN.
  * - Interprets POWER_BUTTON_SIGNAL (short vs long press) for shutdown.
- * - Tracks remote GUI power via GUI_SHUTDOWN_PIN (LOW = GUI powered, HIGH = GUI off).
+ * - Tracks remote GUI state via CAN heartbeat (0x012) timeout.
  * - Drives LED_BUILTIN_PIN to indicate state.
  *
  * poll10ms() is called every 10 ms from the 100 Hz timer3 loop.
@@ -38,11 +38,19 @@ public:
 
     // Called every 10 ms from timer3Didtic block.
     void poll10ms();
+    void requestShutdownFromRemote();
+    void onGuiHeartbeat(uint32_t nowMs);
+
+    bool isButtonPressed() const { return _powerButtonIsPushed != 0; }
+    bool isGuiSignalOn() const;
+    bool clearFaultToActiveIfShutdown();
+
+    uint8_t getGuiPowerStateCode() const { return static_cast<uint8_t>(_guiPowerState); }
 
 private:
     NotificationCallback _notificationCallback = nullptr;
 
-    // GUI power state as inferred from GUI_SHUTDOWN_PIN, used for LED and shutdown sequencing.
+    // GUI power state inferred from heartbeat activity, used for LED and shutdown sequencing.
     enum class GuiPowerState : uint8_t
     {
         OFF,
@@ -65,6 +73,8 @@ private:
     uint16_t _powerButtonPressedCounter = 0; // how many short presses
     uint16_t _powerButtonPowerOffTimerMs = 0;
     bool _longPressHandled = false;
+    uint32_t _lastGuiHeartbeatMs = 0;
+    bool _guiHeartbeatSeen = false;
 
     PowerController();
     ~PowerController() = default;
@@ -85,7 +95,7 @@ private:
     }
 
     void checkStartupState(bool guiOn);
+    bool isGuiAliveNow() const;
 };
 
 #endif // POWER_CONTROLLER_H
-
