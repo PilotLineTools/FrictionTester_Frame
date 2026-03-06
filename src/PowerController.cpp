@@ -210,17 +210,37 @@ bool PowerController::isGuiAliveNow() const
     return (millis() - _lastGuiHeartbeatMs) <= GUI_HEARTBEAT_TIMEOUT_MS;
 }
 
-bool PowerController::clearFaultToActiveIfShutdown()
+bool PowerController::clearFaultToActiveIfShuttingDown()
 {
-    if (_guiPowerState == GuiPowerState::SHUT_DOWN)
+
+    if (_guiPowerState == GuiPowerState::SHUTTING_DOWN)
     {
-        _guiPowerState = GuiPowerState::ACTIVE;
-        _powerLED = 1;
-        _powerLEDTimerMs = 0;
+        setGuiPowerStateCode(static_cast<uint8_t>(GuiPowerState::ACTIVE));
         emit(Notification::ShutdownAborted); // optional
         return true;
     }
     return false;
+}
+
+bool PowerController::setGuiPowerStateCode(uint8_t code)
+{
+    switch (static_cast<GuiPowerState>(code))
+    {
+    case GuiPowerState::OFF:
+    case GuiPowerState::BOOTING_UP:
+    case GuiPowerState::ACTIVE:
+    case GuiPowerState::SHUTTING_DOWN:
+    case GuiPowerState::SHUT_DOWN:
+        _guiPowerState = static_cast<GuiPowerState>(code);
+        if (_guiPowerState == GuiPowerState::ACTIVE)
+        {
+            _powerLED = 1;
+            _powerLEDTimerMs = 0;
+        }
+        return true;
+    default:
+        return false;
+    }
 }
 
 

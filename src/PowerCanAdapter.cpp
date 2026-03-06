@@ -147,9 +147,11 @@ void PowerCanAdapter::handleClearFault(const twai_message_t *msg)
       sendAck(1, 26); return; 
    }
 
-   const bool changed = _power && _power->clearFaultToActiveIfShutdown();
-   sendAck(changed ? 0 : 1, changed ? 0 : 27); // 27 = not in SHUT_DOWN
-   if (changed) sendPowerStatus(4);            // optional event code
+   bool changed = false;    // only send status update if we actually changed state
+   if (_power->getGuiPowerStateCode() == static_cast<uint8_t>(PowerController::GuiPowerState::SHUTTING_DOWN))
+      changed = _power->setGuiPowerStateCode(static_cast<uint8_t>(PowerController::GuiPowerState::ACTIVE));
+   //sendAck(changed ? 0 : 1, changed ? 0 : 25);  // 0,0 = success; 1,25 = no state change needed (not in shutting down state) 
+   if (changed) sendPowerStatus(4);       // Event code 4 = shutdown aborted (cleared fault)     
 }
 
 

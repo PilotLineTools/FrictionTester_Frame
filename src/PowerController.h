@@ -18,6 +18,15 @@
 class PowerController
 {
 public:
+    enum class GuiPowerState : uint8_t
+    {
+        OFF = 0,
+        BOOTING_UP = 1,
+        ACTIVE = 2,
+        SHUTTING_DOWN = 3,
+        SHUT_DOWN = 4
+    };
+
     enum class Notification
     {
         GUIPoweredOn,
@@ -43,22 +52,13 @@ public:
 
     bool isButtonPressed() const { return _powerButtonIsPushed != 0; }
     bool isGuiSignalOn() const;
-    bool clearFaultToActiveIfShutdown();
+    bool clearFaultToActiveIfShuttingDown();
+    bool setGuiPowerStateCode(uint8_t code);
 
     uint8_t getGuiPowerStateCode() const { return static_cast<uint8_t>(_guiPowerState); }
 
 private:
     NotificationCallback _notificationCallback = nullptr;
-
-    // GUI power state inferred from heartbeat activity, used for LED and shutdown sequencing.
-    enum class GuiPowerState : uint8_t
-    {
-        OFF,
-        BOOTING_UP,
-        ACTIVE,
-        SHUTTING_DOWN,
-        SHUT_DOWN
-    };
 
     GuiPowerState _guiPowerState = GuiPowerState::OFF;
 

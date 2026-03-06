@@ -431,18 +431,18 @@ void loop()
    if (needWaterBathUpdate)
    {
       needWaterBathUpdate = false;
-      //waterBathController.update();
-      //waterBathCanAdapter.tick(millis());  // emit BATH_STATUS (0x280) every half second
+      waterBathController.update();
+      waterBathCanAdapter.tick(millis());  // emit BATH_STATUS (0x280) every half second
 
-      //WaterBathError err = waterBathController.getErrorCode();
-      // if (err == WaterBathError::BathSensorDisconnected)
-      //    USBSerial.print("WaterBath: bath sensor disconnected\t");
-      // else if (err != WaterBathError::None)
-      //    USBSerial.printf("WaterBath FAULT: %s\t", WaterBathController::errorToString(err));
-      // else
-      //    USBSerial.printf("Bath: %.1f C  Block: %.1f C  Heater: %s  Current: %.2f A\n",
-      //       waterBathController.getBathTempC(), waterBathController.getBlockTempC(),
-      //       waterBathController.isHeaterOn() ? "On" : "Off", waterBathController.getHeaterCurrentA());
+      WaterBathError err = waterBathController.getErrorCode();
+      if (err == WaterBathError::BathSensorDisconnected)
+         USBSerial.print("WaterBath: bath sensor disconnected\t");
+      else if (err != WaterBathError::None)
+         USBSerial.printf("WaterBath FAULT: %s\t", WaterBathController::errorToString(err));
+      else
+         USBSerial.printf("Bath: %.1f C  Block: %.1f C  Heater: %s  Current: %.2f A\n",
+            waterBathController.getBathTempC(), waterBathController.getBlockTempC(),
+            waterBathController.isHeaterOn() ? "On" : "Off", waterBathController.getHeaterCurrentA());
    }
 
    twai_message_t rx_message;
