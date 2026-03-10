@@ -49,6 +49,9 @@ public:
    void onModeChanged(SystemMode mode) { _mode = mode; }
    SystemMode getMode() const { return _mode; }
 
+   /** Apply same logic as SET_WATER_BATH CAN message (e.g. from serial 'W' command). */
+   void applySetWaterBath(uint8_t heaterEnableRequest, float targetTempC, int16_t circulatorRpm);
+
 private:
    WaterBathController *_controller;
    ICanRouter *_router;

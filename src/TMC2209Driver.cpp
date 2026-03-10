@@ -229,12 +229,12 @@ void TMC2209Driver::setVactual(int32_t vactualRegisterValue)
 // Set Rpm Actual
 void TMC2209Driver::setRpmActual(float rpm)
 {
-    
     if (_stepper == nullptr)
         return;
     
-    // Calculate VACTUAL from RPM
-    float ustepsPerRev = 200 * _microsteps;  // 200 steps/rev for typical stepper, multiplied by microsteps
+    // Calculate VACTUAL from RPM using configured microsteps.
+    // 200 full steps/rev for a typical 1.8° motor.
+    float ustepsPerRev = 200.0f * (float)_microsteps;
     float ustepsPerSec = (fabsf(rpm) / 60.0f) * ustepsPerRev;
     float vactualScale = (float)(1UL << _scale_exp) / (float)_fclk_hz;
     int32_t vactual = (int32_t)(ustepsPerSec * vactualScale + 0.5f);

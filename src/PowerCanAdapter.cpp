@@ -182,12 +182,12 @@ void PowerCanAdapter::sendPowerStatus(uint8_t eventCode)
    tx.data[6] = 0;
    tx.data[7] = 0;
    
-   USBSerial.printf("PowerCanAdapter: send state code=%u\n", (unsigned)tx.data[0]);
-   USBSerial.printf("PowerCanAdapter: send flags=0x%02X (button=%u gui=%u hold=%u)\n",
-                    (unsigned)flags,
-                    (unsigned)((flags & 0x01) != 0),
-                    (unsigned)((flags & 0x02) != 0),
-                    (unsigned)((flags & 0x04) != 0));
+   // USBSerial.printf("PowerCanAdapter: send state code=%u\n", (unsigned)tx.data[0]);
+   // USBSerial.printf("PowerCanAdapter: send flags=0x%02X (button=%u gui=%u hold=%u)\n",
+   //                  (unsigned)flags,
+   //                  (unsigned)((flags & 0x01) != 0),
+   //                  (unsigned)((flags & 0x02) != 0),
+   //                  (unsigned)((flags & 0x04) != 0));
    
    _router->send(&tx);
 }

@@ -113,13 +113,21 @@ private:
    float _heaterCurrentMaxA = WATER_BATH_HEATER_CURRENT_MAX_A;
    float _blockTempMaxC = WATER_BATH_BLOCK_TEMP_MAX_C;
 
-   float _kp = 5.0f;
-   float _ki = 0.2f;
-   float _kd = 0.5f;
+   float _kp = .15f;
+   float _ki = 0.002f;
+   float _kd = 60.0f;
    float _integral = 0.0f;
    float _lastError = 0.0f;
-   static constexpr float _dt = 0.5f;  // update interval (s)
-   static constexpr float _integralMax = 50.0f;  // anti-windup
+   float _pidOutput = 0.0f;
+   float _dutyAccum = 0.0f;   // Bresenham-style accumulator for duty-cycle heater (0–1 per 500 ms cycle)
+   // Derivative-on-measurement state: filtered bath temperature slope (°C/s) over several minutes.
+   float _tempSlopeFiltered = 0.0f;
+   float _lastBathTempForSlope = 0.0f;
+   bool  _slopeInit = false;
+   uint32_t _lastDebugMs = 0; // throttled PID debug print timestamp
+   static constexpr float _dt = 0.5f;        // update interval (s)
+   static constexpr float _integralMax = .40f;   // anti-windup
+   static constexpr float _derivTauSec = 120.0f; // derivative filter time constant (s) 2 minutes
 
    float _bathTempC = 0.0f;
    float _blockTempC = 0.0f;

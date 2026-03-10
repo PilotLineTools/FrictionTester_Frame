@@ -12,6 +12,7 @@
 #define CARRIAGE_DIAG_PIN (GPIO_NUM_3)  // IO3 Diagnostic / StallGuard
 #define CARRIAGE_INVERT_DIRECTION (1)    // Inverts direction
 #define CARRIAGE_ACCEL (15)             // mm/s^2
+#define CARRIAGE_LEADSCREW_PITCH (2.0f)  // mm per revolution (steps/mm = MOTOR_STEPS_PER_REV * microsteps / pitch)
 // CARRIAGE_STEPS_PER_UNIT = MOTOR_STEPS_PER_REV × CARRIAGE_TMC_MICROSTEPS (defined in TMC section below)
 #define CARRIAGE_START_SPEED (5)       // mm/min
 #define CARRIAGE_JOG_SPEED (3000)        // mm/min

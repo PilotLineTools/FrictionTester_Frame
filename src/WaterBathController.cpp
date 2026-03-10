@@ -177,6 +177,19 @@ void WaterBathController::update()
    _blockTempC = readBlockTempC();
    _heaterCurrentA = _currentSensor->getCurrent();
 
+   // Update filtered bath temperature slope for D term (derivative on measurement).
+   // Target window ~3–4 minutes: tau ≈ _derivTauSec; alpha ≈ dt / tau.
+   if (!_slopeInit)
+   {
+      _lastBathTempForSlope = _bathTempC;
+      _tempSlopeFiltered = 0.0f;
+      _slopeInit = true;
+   }
+   float instSlope = (_bathTempC - _lastBathTempForSlope) / _dt;  // °C/s over last 0.5 s
+   _lastBathTempForSlope = _bathTempC;
+   const float alphaD = _dt / _derivTauSec;
+   _tempSlopeFiltered = (1.0f - alphaD) * _tempSlopeFiltered + alphaD * instSlope;
+
    // Check error conditions. If any fault is active, turn off heater and set error code.
 
    // Case 1: Bath sensor disconnected or out of range
@@ -186,6 +199,9 @@ void WaterBathController::update()
       _integral = 0.0f;
       _lastError = 0.0f;
       _pidOutput = 0.0f;
+      _dutyAccum = 0.0f;
+      _tempSlopeFiltered = 0.0f;
+      _slopeInit = false;
       setHeaterOn(false);
    }
 
@@ -196,6 +212,9 @@ void WaterBathController::update()
       _integral = 0.0f;
       _lastError = 0.0f;
       _pidOutput = 0.0f;
+      _dutyAccum = 0.0f;
+      _tempSlopeFiltered = 0.0f;
+      _slopeInit = false;
       setHeaterOn(false);
    }
 
@@ -229,15 +248,53 @@ void WaterBathController::update()
       if (!_heaterRequestEnabled)
       {
          _heaterOn = false;
+         _pidOutput = 0.0f;
+         _dutyAccum = 0.0f;
+         _integral = 0.0f;
+         _lastError = 0.0f;
+         _tempSlopeFiltered = 0.0f;
+         _slopeInit = false;
       }
       else
       {
-         // Heater control logic with deadband
-         // Heater on if bath temp is below target - deadband, off if above target + deadband
-         if (_bathTempC < _targetTempC - _deadbandC)
+         // PID: error positive = below target, need heating
+         float error = _targetTempC - _bathTempC;
+         float pTerm = _kp * error;
+         _integral += _ki * error * _dt;
+         if (_integral > _integralMax)
+            _integral = _integralMax;
+         else if (_integral < 0)
+            _integral = 0;
+         // Derivative on measurement: when temperature is rising (positive slope),
+         // D term reduces output; when falling, it increases output.
+         float dTerm = -_kd * _tempSlopeFiltered;
+         _lastError = error;
+
+         _pidOutput = pTerm + _integral + dTerm;
+         if (_pidOutput > 1.0f)
+            _pidOutput = 1.0f;
+         else if (_pidOutput < 0.0f)
+            _pidOutput = 0.0f;
+
+         // Duty-cycle heater: Bresenham-style, one on/off decision per 500 ms cycle.
+         // e.g. 33% duty → heater on 1 in 3 cycles; 50% → every other cycle.
+         _dutyAccum += _pidOutput;
+         if (_dutyAccum >= 1.0f)
+         {
             _heaterOn = true;
-         else if (_bathTempC > _targetTempC + _deadbandC)
+            _dutyAccum -= 1.0f;
+         }
+         else
             _heaterOn = false;
+
+         // Throttled debug print: once every ~10 seconds
+         uint32_t nowMs = millis();
+         if (nowMs - _lastDebugMs >= 10000u)
+         {
+            _lastDebugMs = nowMs;
+            USBSerial.printf("%lu, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f\n",
+                             (unsigned long)nowMs, _bathTempC, pTerm, _integral, _tempSlopeFiltered*1000.0f, dTerm, _pidOutput);
+         }
       }
       setHeaterOn(_heaterOn);
    }

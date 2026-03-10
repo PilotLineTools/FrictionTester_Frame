@@ -44,6 +44,8 @@ extern MotionController *motionController;
 extern MachineParameter<uint16_t> carriageMicroSteps;
 extern TMC2209Driver *TMC2209_carriageDriver;
 extern Axis *carriageAxis;
+extern WaterBathController waterBathController;
+extern WaterBathCanAdapter waterBathCanAdapter;
 
 void serialEvent(void)
 {
@@ -81,6 +83,15 @@ void serialEvent(void)
             carriageAxis->stepsPerUnit = (float)(MOTOR_STEPS_PER_REV * ms);
             USBSerial.printf("Carriage stepsPerUnit = %u (200 × %u)\n", (unsigned)(MOTOR_STEPS_PER_REV * ms), (unsigned)ms);
          }
+      }
+      else if (c == 'w' || c == 'W')
+      {
+         // Test command: set bath target and circulator RPM from serial.
+         // Use 700 RPM here; applySetWaterBath uses int16_t so -1000..1000 is supported.
+         waterBathCanAdapter.applySetWaterBath(1, 37.0f, 250);
+         USBSerial.println("Water bath: target 37 C, heater enabled (PID), circulator 250 RPM");
+         USBSerial.println("P = .15, I = 0.002, D = 60, tau = 120s, integral max = .40");
+         USBSerial.println("Time(ms), Temp(C), pTerm, I, slope, D, output");
       }
    }
 }
@@ -224,9 +235,10 @@ void setup()
    digitalWrite(HEATER_FET_PIN, LOW); // startup failsafe: keep heater off
 
    USBSerial.begin(115200);
+   TMCSerial.begin(115200, SERIAL_8N1, TMC_UART_RX, TMC_UART_TX);
 
    strcpy(swVer, VERSION_STRING);
-   delay(100);
+   delay(1000);
    USBSerial.print("Version: ");
    USBSerial.println(swVer);
    USBSerial.print("Build Date: ");
@@ -283,6 +295,14 @@ void setup()
    TMC2209_carriageDriver->configure(carriageRmsCurrentMa.value, carriageMicroSteps.value, CARRIAGE_TMC_SGTHRS, CARRIAGE_TMC_RSENSE, CarriageConfig);
    TMC2209_bathDriver->configure(bathRmsCurrentMa.value, bathMicroSteps.value, BATH_TMC_SGTHRS, BATH_TMC_RSENSE, BathConfig);
 
+   // Quick sanity check: bath microsteps configured vs. read back from driver
+   {
+      uint16_t bathCfgMs = bathMicroSteps.value;
+      uint16_t bathReadMs = TMC2209_bathDriver->getMicrosteps();
+      USBSerial.printf("**************Bath microsteps cfg=%u readback=%u\n",
+                       (unsigned)bathCfgMs, (unsigned)bathReadMs);
+   }
+
    // Attach driver to motor
    carriageMotor->attachDriver(TMC2209_carriageDriver);
    bathMotor->attachDriver(TMC2209_bathDriver);
@@ -290,8 +310,6 @@ void setup()
    carriageAxis->addMotor(*carriageMotor);
 
    motionController->addAxis(*carriageAxis, AxisId::Carriage);
-
-   TMCSerial.begin(115200, SERIAL_8N1, TMC_UART_RX, TMC_UART_TX);
 
    motionController->init();
 
@@ -433,15 +451,15 @@ void loop()
       waterBathController.update();
       waterBathCanAdapter.tick(millis());  // emit BATH_STATUS (0x280) every half second
 
-      WaterBathError err = waterBathController.getErrorCode();
-      if (err == WaterBathError::BathSensorDisconnected)
-         USBSerial.print("WaterBath: bath sensor disconnected\t");
-      else if (err != WaterBathError::None)
-         USBSerial.printf("WaterBath FAULT: %s\t", WaterBathController::errorToString(err));
-      else
-         USBSerial.printf("Bath: %.1f C  Block: %.1f C  Heater: %s  Current: %.2f A\n",
-            waterBathController.getBathTempC(), waterBathController.getBlockTempC(),
-            waterBathController.isHeaterOn() ? "On" : "Off", waterBathController.getHeaterCurrentA());
+      // WaterBathError err = waterBathController.getErrorCode();
+      // if (err == WaterBathError::BathSensorDisconnected)
+      //    USBSerial.print("WaterBath: bath sensor disconnected\t");
+      // else if (err != WaterBathError::None)
+      //    USBSerial.printf("WaterBath FAULT: %s\t", WaterBathController::errorToString(err));
+      // else
+      //    USBSerial.printf("Bath: %.1f C  Block: %.1f C  Heater: %s  Current: %.2f A\n",
+      //       waterBathController.getBathTempC(), waterBathController.getBlockTempC(),
+      //       waterBathController.isHeaterOn() ? "On" : "Off", waterBathController.getHeaterCurrentA());
    }
 
    twai_message_t rx_message;

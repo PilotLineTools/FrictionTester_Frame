@@ -37,6 +37,37 @@ void WaterBathCanAdapter::staticHandleSetWaterBath(const twai_message_t *msg, vo
       adapter->handleSetWaterBath(msg);
 }
 
+void WaterBathCanAdapter::applySetWaterBath(uint8_t heaterEnableRequest, float targetTempC, int16_t circulatorRpm)
+{
+   if (!_controller)
+      return;
+   if (_mode == SystemMode::FW_UPDATE)
+   {
+      USBSerial.println("WB FLOW serial reject: mode=FW_UPDATE");
+      return;
+   }
+   const bool heaterRequested = (heaterEnableRequest != 0);
+   // Clamp requested RPM into supported range [-1000, 1000]
+   if (circulatorRpm > 1000)
+      circulatorRpm = 1000;
+   else if (circulatorRpm < -1000)
+      circulatorRpm = -1000;
+   const float circulatorRpmRequest = (float)circulatorRpm;
+
+   _controller->setTargetTemp(targetTempC);
+   _controller->setHeaterEnableRequest(heaterRequested);
+   _controller->setCirculatorTargetRpm(circulatorRpmRequest);
+
+   if (!heaterRequested && circulatorRpm == 0)
+      _controller->disable();
+   else
+      _controller->enable();
+
+   USBSerial.printf("WB FLOW serial apply target=%.2fC heater_req=%u circ=%d enabled=%u\n",
+                    targetTempC, (unsigned)heaterEnableRequest, (int)circulatorRpm,
+                    (unsigned)_controller->isEnabled());
+}
+
 void WaterBathCanAdapter::handleSetWaterBath(const twai_message_t *msg)
 {
    const uint8_t *d = msg->data;
@@ -124,17 +155,17 @@ void WaterBathCanAdapter::sendBathStatus()
    tx.data[6] = _controller->isHeaterOn() ? 1 : 0;
    tx.data[7] = _controller->isEnabled() ? 1 : 0;
 
-   if (((int8_t)tx.data[6] != _lastLoggedHeater) || ((int8_t)tx.data[7] != _lastLoggedEnabled))
-   {
-      USBSerial.printf("WB FLOW status heater=%u enabled=%u water=%.2f block=%.2f current=%.2fA\n",
-                       (unsigned)tx.data[6],
-                       (unsigned)tx.data[7],
-                       waterC,
-                       blockC,
-                       currentA);
-      _lastLoggedHeater = (int8_t)tx.data[6];
-      _lastLoggedEnabled = (int8_t)tx.data[7];
-   }
+   // if (((int8_t)tx.data[6] != _lastLoggedHeater) || ((int8_t)tx.data[7] != _lastLoggedEnabled))
+   // {
+   //    USBSerial.printf("WB FLOW status heater=%u enabled=%u water=%.2f block=%.2f current=%.2fA\n",
+   //                     (unsigned)tx.data[6],
+   //                     (unsigned)tx.data[7],
+   //                     waterC,
+   //                     blockC,
+   //                     currentA);
+   //    _lastLoggedHeater = (int8_t)tx.data[6];
+   //    _lastLoggedEnabled = (int8_t)tx.data[7];
+   // }
 
    if (_router)
       _router->send(&tx);
