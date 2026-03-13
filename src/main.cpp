@@ -90,7 +90,7 @@ void serialEvent(void)
          // Use 700 RPM here; applySetWaterBath uses int16_t so -1000..1000 is supported.
          waterBathCanAdapter.applySetWaterBath(1, 37.0f, 250);
          USBSerial.println("Water bath: target 37 C, heater enabled (PID), circulator 250 RPM");
-         USBSerial.println("P = .15, I = 0.002, D = 60, tau = 120s, integral max = .40");
+         USBSerial.println("P = .15, I = 0.0003, D = 40, tau = 120s, integral max = .30");
          USBSerial.println("Time(ms), Temp(C), pTerm, I, slope, D, output");
       }
    }

@@ -114,8 +114,8 @@ private:
    float _blockTempMaxC = WATER_BATH_BLOCK_TEMP_MAX_C;
 
    float _kp = .15f;
-   float _ki = 0.002f;
-   float _kd = 60.0f;
+   float _ki = 0.0003f;
+   float _kd = 40.0f;
    float _integral = 0.0f;
    float _lastError = 0.0f;
    float _pidOutput = 0.0f;
@@ -126,7 +126,7 @@ private:
    bool  _slopeInit = false;
    uint32_t _lastDebugMs = 0; // throttled PID debug print timestamp
    static constexpr float _dt = 0.5f;        // update interval (s)
-   static constexpr float _integralMax = .40f;   // anti-windup
+   static constexpr float _integralMax = .30f;   // anti-windup
    static constexpr float _derivTauSec = 120.0f; // derivative filter time constant (s) 2 minutes
 
    float _bathTempC = 0.0f;
