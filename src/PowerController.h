@@ -46,6 +46,11 @@ public:
         return instance;
     }
 
+    static PowerController *instance()
+    {
+        return getInstance();
+    }
+
     // Called every 10 ms from timer3Didtic block.
     void poll10ms();
     void requestShutdownFromRemote();

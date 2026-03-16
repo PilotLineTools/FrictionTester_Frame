@@ -7,6 +7,7 @@
 #define CAN_ROUTER_H
 
 #include "ICanRouter.h"
+#include "PowerController.h"
 #include "driver/twai.h"
 #include <Arduino.h>
 
@@ -51,12 +52,17 @@ public:
    bool send(const twai_message_t *msg) override
    {
       twai_status_info_t status = {};
-      if (!isBusHealthy())
+      PowerController *power = PowerController::instance();
+      const unsigned guiSignalOn = (power && power->isGuiSignalOn()) ? 1u : 0u;
+      const unsigned piCanAlive = (power && power->isPiCanAlive()) ? 1u : 0u;
+      /*if (!isBusHealthy())
       {
          if (getStatusInfo(status))
          {
-            USBSerial.printf("CAN send failed id=0x%03lX: state=%d tx_err=%u rx_err=%u bus_err=%u arb_lost=%u tx_failed=%u rx_missed=%u\n",
+            USBSerial.printf("CAN send failed id=0x%03lX: gui_signal=%u pi_can_alive=%u state=%d tx_err=%u rx_err=%u bus_err=%u arb_lost=%u tx_failed=%u rx_missed=%u\n",
                              (unsigned long)(msg->identifier & 0x7FF),
+                             guiSignalOn,
+                             piCanAlive,
                              (int)status.state,
                              (unsigned)status.tx_error_counter,
                              (unsigned)status.rx_error_counter,
@@ -67,19 +73,23 @@ public:
          }
          else
          {
-            USBSerial.printf("CAN send failed id=0x%03lX: unable to read TWAI status\n",
-                             (unsigned long)(msg->identifier & 0x7FF));
+            USBSerial.printf("CAN send failed id=0x%03lX: gui_signal=%u pi_can_alive=%u unable to read TWAI status\n",
+                             (unsigned long)(msg->identifier & 0x7FF),
+                             guiSignalOn,
+                             piCanAlive);
          }
          return false;
       }
-
+      */
       if (twai_transmit(msg, 0) == ESP_OK)
          return true;
 
       if (getStatusInfo(status))
       {
-         USBSerial.printf("CAN send failed id=0x%03lX: state=%d tx_err=%u rx_err=%u bus_err=%u arb_lost=%u tx_failed=%u rx_missed=%u\n",
+         USBSerial.printf("CAN send failed id=0x%03lX: gui_signal=%u pi_can_alive=%u state=%d tx_err=%u rx_err=%u bus_err=%u arb_lost=%u tx_failed=%u rx_missed=%u\n",
                           (unsigned long)(msg->identifier & 0x7FF),
+                          guiSignalOn,
+                          piCanAlive,
                           (int)status.state,
                           (unsigned)status.tx_error_counter,
                           (unsigned)status.rx_error_counter,
@@ -90,8 +100,10 @@ public:
       }
       else
       {
-         USBSerial.printf("CAN send failed id=0x%03lX: unable to read TWAI status\n",
-                          (unsigned long)(msg->identifier & 0x7FF));
+         USBSerial.printf("CAN send failed id=0x%03lX: gui_signal=%u pi_can_alive=%u unable to read TWAI status\n",
+                          (unsigned long)(msg->identifier & 0x7FF),
+                          guiSignalOn,
+                          piCanAlive);
       }
       return false;
    }
