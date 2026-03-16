@@ -3,7 +3,8 @@
  *
  * - Latches power via POWER_HOLD_PIN.
  * - Interprets POWER_BUTTON_SIGNAL (short vs long press) for shutdown.
- * - Tracks remote GUI state via CAN heartbeat (0x012) timeout.
+ * - Tracks GUI power from GUI_SHUTDOWN_PIN.
+ * - Tracks Pi CAN availability via CAN heartbeat (0x012) timeout.
  * - Drives LED_BUILTIN_PIN to indicate state.
  *
  * poll10ms() is called every 10 ms from the 100 Hz timer3 loop.
@@ -52,8 +53,8 @@ public:
 
     bool isButtonPressed() const { return _powerButtonIsPushed != 0; }
     bool isGuiSignalOn() const;
-    // True when GUI OS + app are up (we've seen recent heartbeats)
-    bool isGuiAlive() const { return isGuiAliveNow(); }
+    bool isGuiAlive() const { return isGuiSignalOn(); }
+    bool isPiCanAlive() const { return isPiCanAliveNow(); }
     bool clearFaultToActiveIfShuttingDown();
     bool setGuiPowerStateCode(uint8_t code);
 
@@ -97,7 +98,7 @@ private:
     }
 
     void checkStartupState(bool guiOn);
-    bool isGuiAliveNow() const;
+    bool isPiCanAliveNow() const;
 };
 
 #endif // POWER_CONTROLLER_H
