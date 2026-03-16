@@ -19,7 +19,7 @@ void PowerCanAdapter::begin()
       _router->on(CAN_ID_SET_POWER, &PowerCanAdapter::staticHandleSetPower, this);
       _router->on(CAN_ID_GUI_HEARTBEAT, &PowerCanAdapter::staticHandleGuiHeartbeat, this);
       _router->on(CAN_ID_CLEAR_FAULT, &PowerCanAdapter::staticHandleClearFault, this);
-
+      _router->on(CAN_ID_SHUTDOWN_REQUEST, &PowerCanAdapter::staticHandleShutdownRequest, this);
    }
 }
 
@@ -76,6 +76,13 @@ void PowerCanAdapter::staticHandleClearFault(const twai_message_t *msg, void *ct
    auto *adapter = static_cast<PowerCanAdapter *>(ctx);
    if (adapter)
       adapter->handleClearFault(msg);
+}
+
+void PowerCanAdapter::staticHandleShutdownRequest(const twai_message_t *msg, void *ctx)
+{
+   auto *adapter = static_cast<PowerCanAdapter *>(ctx);
+   if (adapter)
+      adapter->handleShutdownRequest(msg);
 }
 
 void PowerCanAdapter::handleSetPower(const twai_message_t *msg)
@@ -152,6 +159,25 @@ void PowerCanAdapter::handleClearFault(const twai_message_t *msg)
       changed = _power->setGuiPowerStateCode(static_cast<uint8_t>(PowerController::GuiPowerState::ACTIVE));
    //sendAck(changed ? 0 : 1, changed ? 0 : 25);  // 0,0 = success; 1,25 = no state change needed (not in shutting down state) 
    if (changed) sendPowerStatus(4);       // Event code 4 = shutdown aborted (cleared fault)     
+}
+
+void PowerCanAdapter::handleShutdownRequest(const twai_message_t *msg)
+{
+   if (!_power)
+      return;
+
+   if (msg->data_length_code != 8)
+   {
+      sendAck(1, 27);
+      return;
+   }
+
+   bool changed = false;
+   if (_power->getGuiPowerStateCode() == static_cast<uint8_t>(PowerController::GuiPowerState::ACTIVE))
+      changed = _power->setGuiPowerStateCode(static_cast<uint8_t>(PowerController::GuiPowerState::SHUTTING_DOWN));
+
+   if (changed)
+      sendPowerStatus(3);
 }
 
 

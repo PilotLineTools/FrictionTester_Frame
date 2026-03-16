@@ -19,6 +19,7 @@ static const uint32_t CAN_ID_SET_POWER    = 0x081u;
 static const uint32_t CAN_ID_POWER_STATUS = 0x281u;
 static const uint32_t CAN_ID_CLEAR_FAULT = 0x011u;
 static const uint32_t CAN_ID_GUI_HEARTBEAT = 0x012u;
+static const uint32_t CAN_ID_SHUTDOWN_REQUEST = 0x013u;
 
 class PowerCanAdapter
 {
@@ -45,9 +46,11 @@ private:
    static void staticHandleSetPower(const twai_message_t *msg, void *ctx);
    static void staticHandleGuiHeartbeat(const twai_message_t *msg, void *ctx);
    static void staticHandleClearFault(const twai_message_t *msg, void *ctx);
+    static void staticHandleShutdownRequest(const twai_message_t *msg, void *ctx);
    void handleSetPower(const twai_message_t *msg);
    void handleGuiHeartbeat(const twai_message_t *msg);
    void handleClearFault(const twai_message_t *msg);
+   void handleShutdownRequest(const twai_message_t *msg);
 
    void sendPowerStatus(uint8_t eventCode);
    void sendAck(uint8_t result, uint8_t detailCode);
