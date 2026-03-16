@@ -52,6 +52,8 @@ public:
 
     bool isButtonPressed() const { return _powerButtonIsPushed != 0; }
     bool isGuiSignalOn() const;
+    // True when GUI OS + app are up (we've seen recent heartbeats)
+    bool isGuiAlive() const { return isGuiAliveNow(); }
     bool clearFaultToActiveIfShuttingDown();
     bool setGuiPowerStateCode(uint8_t code);
 

@@ -449,7 +449,32 @@ void loop()
    {
       needWaterBathUpdate = false;
       waterBathController.update();
-      waterBathCanAdapter.tick(millis());  // emit BATH_STATUS (0x280) every half second
+      // Emit BATH_STATUS (0x280) every 500 ms regardless of GUI state.
+      waterBathCanAdapter.tick(millis());
+
+      // Debug-print TWAI controller status if it's not in a healthy state (throttled).
+      static uint32_t lastCanStatusPrintMs = 0;
+      twai_status_info_t canStatus;
+      if (twai_get_status_info(&canStatus) == ESP_OK)
+      {
+         bool healthy = (canStatus.state == TWAI_STATE_RUNNING) &&
+                        (canStatus.tx_error_counter == 0) &&
+                        (canStatus.rx_error_counter == 0) &&
+                        (canStatus.bus_error_count == 0);
+         uint32_t now = millis();
+         if (!healthy && (now - lastCanStatusPrintMs >= 1000u))
+         {
+            lastCanStatusPrintMs = now;
+            USBSerial.printf("TWAI status: state=%d tx_err=%u rx_err=%u bus_err=%u arb_lost=%u tx_failed=%u rx_missed=%u\n",
+                             (int)canStatus.state,
+                             (unsigned)canStatus.tx_error_counter,
+                             (unsigned)canStatus.rx_error_counter,
+                             (unsigned)canStatus.bus_error_count,
+                             (unsigned)canStatus.arb_lost_count,
+                             (unsigned)canStatus.tx_failed_count,
+                             (unsigned)canStatus.rx_missed_count);
+         }
+      }
 
       // WaterBathError err = waterBathController.getErrorCode();
       // if (err == WaterBathError::BathSensorDisconnected)

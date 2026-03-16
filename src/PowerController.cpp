@@ -40,7 +40,7 @@ void PowerController::poll10ms()
 
     // Button assumed active HIGH (pressed when reading HIGH)
     _powerButtonIsPushed = (digitalRead(POWER_BUTTON_SIGNAL) == HIGH) ? 1 : 0;
-    bool guiOn = isGuiAliveNow();
+    bool guiOn = isGuiSignalOn();
 
     // Button edge/hold debug (runs regardless of GUI power state)
     const bool justPressed  = (_powerButtonIsPushed && !_previousPowerButtonIsPushed);
@@ -113,15 +113,14 @@ void PowerController::poll10ms()
 
     case GuiPowerState::BOOTING_UP:
     {
-        // GUI has power; slow blink until we confirm GUI has booted (via CAN in future).
+        // GUI has power (24 V on, shutdown pin LOW); slow blink until we see a CAN heartbeat.
         uint16_t interval = LED_BLINK_SLOW_MS;
         if (_powerLEDTimerMs >= interval)
         {
             _powerLEDTimerMs = 0;
             _powerLED = _powerLED ? 0 : 1;
         }
-
-        checkStartupState(guiOn);
+        // Transition to ACTIVE happens in onGuiHeartbeat() when first heartbeat arrives.
     }
     break;
 
@@ -196,11 +195,20 @@ void PowerController::onGuiHeartbeat(uint32_t nowMs)
 {
     _lastGuiHeartbeatMs = nowMs;
     _guiHeartbeatSeen = true;
+
+    // First heartbeat after power-on: GUI OS + app are up, enter ACTIVE.
+    if (_guiPowerState == GuiPowerState::BOOTING_UP)
+    {
+        _guiPowerState = GuiPowerState::ACTIVE;
+        _powerLED = 1;
+        _powerLEDTimerMs = 0;
+        emit(Notification::GUIPoweredOn);
+    }
 }
 
 bool PowerController::isGuiSignalOn() const
 {
-    return isGuiAliveNow();
+    return digitalRead(GUI_SHUTDOWN_PIN) == LOW;
 }
 
 bool PowerController::isGuiAliveNow() const
