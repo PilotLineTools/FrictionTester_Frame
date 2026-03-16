@@ -50,7 +50,67 @@ public:
 
    bool send(const twai_message_t *msg) override
    {
-      return twai_transmit(msg, 0) == ESP_OK;
+      twai_status_info_t status = {};
+      if (!isBusHealthy())
+      {
+         if (getStatusInfo(status))
+         {
+            USBSerial.printf("CAN send failed id=0x%03lX: state=%d tx_err=%u rx_err=%u bus_err=%u arb_lost=%u tx_failed=%u rx_missed=%u\n",
+                             (unsigned long)(msg->identifier & 0x7FF),
+                             (int)status.state,
+                             (unsigned)status.tx_error_counter,
+                             (unsigned)status.rx_error_counter,
+                             (unsigned)status.bus_error_count,
+                             (unsigned)status.arb_lost_count,
+                             (unsigned)status.tx_failed_count,
+                             (unsigned)status.rx_missed_count);
+         }
+         else
+         {
+            USBSerial.printf("CAN send failed id=0x%03lX: unable to read TWAI status\n",
+                             (unsigned long)(msg->identifier & 0x7FF));
+         }
+         return false;
+      }
+
+      if (twai_transmit(msg, 0) == ESP_OK)
+         return true;
+
+      if (getStatusInfo(status))
+      {
+         USBSerial.printf("CAN send failed id=0x%03lX: state=%d tx_err=%u rx_err=%u bus_err=%u arb_lost=%u tx_failed=%u rx_missed=%u\n",
+                          (unsigned long)(msg->identifier & 0x7FF),
+                          (int)status.state,
+                          (unsigned)status.tx_error_counter,
+                          (unsigned)status.rx_error_counter,
+                          (unsigned)status.bus_error_count,
+                          (unsigned)status.arb_lost_count,
+                          (unsigned)status.tx_failed_count,
+                          (unsigned)status.rx_missed_count);
+      }
+      else
+      {
+         USBSerial.printf("CAN send failed id=0x%03lX: unable to read TWAI status\n",
+                          (unsigned long)(msg->identifier & 0x7FF));
+      }
+      return false;
+   }
+
+   bool getStatusInfo(twai_status_info_t &status) const
+   {
+      return twai_get_status_info(&status) == ESP_OK;
+   }
+
+   bool isBusHealthy() const
+   {
+      twai_status_info_t status = {};
+      if (!getStatusInfo(status))
+         return false;
+
+      return (status.state == TWAI_STATE_RUNNING) &&
+             (status.tx_error_counter == 0) &&
+             (status.rx_error_counter == 0) &&
+             (status.bus_error_count == 0);
    }
 
    /** Call from main loop when twai_receive() returns a frame; dispatches to registered handler. */
