@@ -6,7 +6,7 @@
 #include "WaterBathCanAdapter.h"
 #include <algorithm>
 
-WaterBathCanAdapter::WaterBathCanAdapter(WaterBathController *controller, ICanRouter *router, FrameCanAdapter *frameCan)
+WaterBathCanAdapter::WaterBathCanAdapter(WaterBathController *controller, ICanRouter *router, FrameESP_CanAdapter *frameCan)
    : _controller(controller),
      _router(router),
      _frameCan(frameCan)

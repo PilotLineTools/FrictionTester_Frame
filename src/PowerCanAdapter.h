@@ -9,7 +9,7 @@
 #define POWER_CAN_ADAPTER_H
 
 #include "ICanRouter.h"
-#include "FrameCanAdapter.h"
+#include "FrameESP_CanAdapter.h"
 #include "PowerController.h"
 #include "SystemMode.h"
 #include "driver/twai.h"
@@ -24,7 +24,7 @@ static const uint32_t CAN_ID_SHUTDOWN_REQUEST = 0x013u;
 class PowerCanAdapter
 {
 public:
-   PowerCanAdapter(PowerController *power, ICanRouter *router, FrameCanAdapter *frameCan);
+   PowerCanAdapter(PowerController *power, ICanRouter *router, FrameESP_CanAdapter *espCan);
 
    void begin();
    void tick(uint32_t nowMs);
@@ -36,7 +36,7 @@ public:
 private:
    PowerController *_power;
    ICanRouter *_router;
-   FrameCanAdapter *_frameCan;
+   FrameESP_CanAdapter *_espCan;
    SystemMode _mode = SystemMode::NORMAL;
 
    uint32_t _lastStatusMs = 0;

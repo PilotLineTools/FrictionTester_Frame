@@ -1,30 +1,30 @@
-#include "FrameCanAdapter.h"
+#include "FrameESP_CanAdapter.h"
 #include <Arduino.h>
 #include "driver/twai.h"
 
-FrameCanAdapter::FrameCanAdapter(ICanRouter *router)
+FrameESP_CanAdapter::FrameESP_CanAdapter(ICanRouter *router)
    : _router(router)
 {
 }
 
-void FrameCanAdapter::begin()
+void FrameESP_CanAdapter::begin()
 {
    if (!_router)
       return;
-   _router->on(CAN_ID_PING_REQUEST, &FrameCanAdapter::staticHandlePingRequest, this);
-   _router->on(CAN_ID_FW_START, &FrameCanAdapter::staticHandleFwStart, this);
-   _router->on(CAN_ID_FW_END, &FrameCanAdapter::staticHandleFwEnd, this);
-   _router->on(CAN_ID_FW_ABORT, &FrameCanAdapter::staticHandleFwAbort, this);
-   _router->on(CAN_ID_FW_STATUS, &FrameCanAdapter::staticHandleFwStatus, this);
+   _router->on(FRAME_ESP_CAN_ID_PING_REQUEST, &FrameESP_CanAdapter::staticHandlePingRequest, this);
+   _router->on(FRAME_ESP_CAN_ID_FW_START, &FrameESP_CanAdapter::staticHandleFwStart, this);
+   _router->on(FRAME_ESP_CAN_ID_FW_END, &FrameESP_CanAdapter::staticHandleFwEnd, this);
+   _router->on(FRAME_ESP_CAN_ID_FW_ABORT, &FrameESP_CanAdapter::staticHandleFwAbort, this);
+   _router->on(FRAME_ESP_CAN_ID_FW_STATUS, &FrameESP_CanAdapter::staticHandleFwStatus, this);
 }
 
-void FrameCanAdapter::sendAck(uint8_t result, uint8_t detailCode)
+void FrameESP_CanAdapter::sendAck(uint8_t result, uint8_t detailCode)
 {
    if (!_router)
       return;
 
    twai_message_t tx = {};
-   tx.identifier = CAN_ID_FRAME_ACK;
+   tx.identifier = FRAME_ESP_CAN_ID_ACK;
    tx.data_length_code = 8;
    tx.flags = 0;
    tx.data[0] = _ackSeq;
@@ -40,7 +40,7 @@ void FrameCanAdapter::sendAck(uint8_t result, uint8_t detailCode)
    _ackSeq++;
 }
 
-bool FrameCanAdapter::consumeModeChange(SystemMode &modeOut)
+bool FrameESP_CanAdapter::consumeModeChange(SystemMode &modeOut)
 {
    if (!_modeChanged)
       return false;
@@ -49,42 +49,42 @@ bool FrameCanAdapter::consumeModeChange(SystemMode &modeOut)
    return true;
 }
 
-void FrameCanAdapter::staticHandlePingRequest(const twai_message_t *msg, void *ctx)
+void FrameESP_CanAdapter::staticHandlePingRequest(const twai_message_t *msg, void *ctx)
 {
-   auto *adapter = static_cast<FrameCanAdapter *>(ctx);
+   auto *adapter = static_cast<FrameESP_CanAdapter *>(ctx);
    if (adapter)
       adapter->handlePingRequest(msg);
 }
 
-void FrameCanAdapter::staticHandleFwStart(const twai_message_t *msg, void *ctx)
+void FrameESP_CanAdapter::staticHandleFwStart(const twai_message_t *msg, void *ctx)
 {
-   auto *adapter = static_cast<FrameCanAdapter *>(ctx);
+   auto *adapter = static_cast<FrameESP_CanAdapter *>(ctx);
    if (adapter)
       adapter->handleFwStart(msg);
 }
 
-void FrameCanAdapter::staticHandleFwEnd(const twai_message_t *msg, void *ctx)
+void FrameESP_CanAdapter::staticHandleFwEnd(const twai_message_t *msg, void *ctx)
 {
-   auto *adapter = static_cast<FrameCanAdapter *>(ctx);
+   auto *adapter = static_cast<FrameESP_CanAdapter *>(ctx);
    if (adapter)
       adapter->handleFwEnd(msg);
 }
 
-void FrameCanAdapter::staticHandleFwAbort(const twai_message_t *msg, void *ctx)
+void FrameESP_CanAdapter::staticHandleFwAbort(const twai_message_t *msg, void *ctx)
 {
-   auto *adapter = static_cast<FrameCanAdapter *>(ctx);
+   auto *adapter = static_cast<FrameESP_CanAdapter *>(ctx);
    if (adapter)
       adapter->handleFwAbort(msg);
 }
 
-void FrameCanAdapter::staticHandleFwStatus(const twai_message_t *msg, void *ctx)
+void FrameESP_CanAdapter::staticHandleFwStatus(const twai_message_t *msg, void *ctx)
 {
-   auto *adapter = static_cast<FrameCanAdapter *>(ctx);
+   auto *adapter = static_cast<FrameESP_CanAdapter *>(ctx);
    if (adapter)
       adapter->handleFwStatus(msg);
 }
 
-void FrameCanAdapter::setMode(SystemMode mode)
+void FrameESP_CanAdapter::setMode(SystemMode mode)
 {
    if (_mode == mode)
       return;
@@ -92,7 +92,7 @@ void FrameCanAdapter::setMode(SystemMode mode)
    _modeChanged = true;
 }
 
-void FrameCanAdapter::handlePingRequest(const twai_message_t *msg)
+void FrameESP_CanAdapter::handlePingRequest(const twai_message_t *msg)
 {
    if (msg->data_length_code != 8)
    {
@@ -105,7 +105,7 @@ void FrameCanAdapter::handlePingRequest(const twai_message_t *msg)
    sendAck(0, 0);
 }
 
-void FrameCanAdapter::handleFwStart(const twai_message_t *msg)
+void FrameESP_CanAdapter::handleFwStart(const twai_message_t *msg)
 {
    if (msg->data_length_code != 8)
    {
@@ -123,7 +123,7 @@ void FrameCanAdapter::handleFwStart(const twai_message_t *msg)
    sendFwStatus();
 }
 
-void FrameCanAdapter::handleFwEnd(const twai_message_t *msg)
+void FrameESP_CanAdapter::handleFwEnd(const twai_message_t *msg)
 {
    if (msg->data_length_code != 8)
    {
@@ -139,7 +139,7 @@ void FrameCanAdapter::handleFwEnd(const twai_message_t *msg)
    sendFwStatus();
 }
 
-void FrameCanAdapter::handleFwAbort(const twai_message_t *msg)
+void FrameESP_CanAdapter::handleFwAbort(const twai_message_t *msg)
 {
    if (msg->data_length_code != 8)
       return;
@@ -150,20 +150,20 @@ void FrameCanAdapter::handleFwAbort(const twai_message_t *msg)
    sendFwStatus();
 }
 
-void FrameCanAdapter::handleFwStatus(const twai_message_t *msg)
+void FrameESP_CanAdapter::handleFwStatus(const twai_message_t *msg)
 {
    if (msg->data_length_code != 8)
       return;
    sendFwStatus();
 }
 
-void FrameCanAdapter::sendFwStatus()
+void FrameESP_CanAdapter::sendFwStatus()
 {
    if (!_router)
       return;
 
    twai_message_t tx = {};
-   tx.identifier = CAN_ID_FW_STATUS;
+   tx.identifier = FRAME_ESP_CAN_ID_FW_STATUS;
    tx.data_length_code = 8;
    tx.flags = 0;
    packU32LE(&tx.data[0], _bytesReceived);

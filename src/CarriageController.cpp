@@ -65,9 +65,9 @@ void CarriageController::stop()
 
 bool CarriageController::isMoving() const
 {
-   if (!_motionController)
+   if (!_carriageAxis)
       return false;
-   return _motionController->isMoving();
+   return _carriageAxis->moving;
 }
 
 float CarriageController::getPositionMm() const
@@ -75,4 +75,13 @@ float CarriageController::getPositionMm() const
    if (!_motionController)
       return 0.0f;
    return _motionController->getAbsPosition(AxisId::Carriage);
+}
+
+float CarriageController::getVelocityMmS() const
+{
+   if (!_carriageAxis || !_carriageAxis->moving)
+      return 0.0f;
+
+   float speed = _carriageAxis->getSpeed();
+   return _carriageAxis->getDirection() ? speed : -speed;
 }

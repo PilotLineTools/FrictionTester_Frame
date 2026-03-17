@@ -5,10 +5,10 @@
 static const uint8_t POWER_CMD_NOP = 0;
 static const uint8_t POWER_CMD_REQUEST_SHUTDOWN = 1;
 
-PowerCanAdapter::PowerCanAdapter(PowerController *power, ICanRouter *router, FrameCanAdapter *frameCan)
+PowerCanAdapter::PowerCanAdapter(PowerController *power, ICanRouter *router, FrameESP_CanAdapter *espCan)
    : _power(power),
      _router(router),
-     _frameCan(frameCan)
+     _espCan(espCan)
 {
 }
 
@@ -224,6 +224,6 @@ void PowerCanAdapter::sendPowerStatus(uint8_t eventCode)
 
 void PowerCanAdapter::sendAck(uint8_t result, uint8_t detailCode)
 {
-   if (_frameCan)
-      _frameCan->sendAck(result, detailCode);
+   if (_espCan)
+      _espCan->sendAck(result, detailCode);
 }

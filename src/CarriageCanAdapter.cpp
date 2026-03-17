@@ -1,9 +1,10 @@
 #include "CarriageCanAdapter.h"
 #include <Arduino.h>
 #include <cstring>
+#include <math.h>
 
-CarriageCanAdapter::CarriageCanAdapter(CarriageController *controller, ICanRouter *router, FrameCanAdapter *frameCan)
-   : _controller(controller), _router(router), _frameCan(frameCan)
+CarriageCanAdapter::CarriageCanAdapter(CarriageController *controller, ICanRouter *router, FrameESP_CanAdapter *espCan)
+   : _controller(controller), _router(router), _espCan(espCan)
 {
 }
 
@@ -21,10 +22,21 @@ void CarriageCanAdapter::begin()
 
 void CarriageCanAdapter::tick()
 {
-   if (!_controller || !_router || !_absMoveDonePending)
+   if (!_controller || !_router)
       return;
 
    bool moving = _controller->isMoving();
+   uint32_t nowMs = millis();
+
+   if (moving && (nowMs - _lastPositionTxMs >= POSITION_TX_INTERVAL_MS))
+   {
+      sendPosition(_controller->getPositionMm());
+      _lastPositionTxMs = nowMs;
+   }
+
+   if (!_absMoveDonePending)
+      return;
+
    if (!_absMoveWasMoving)
    {
       if (moving)
@@ -91,15 +103,15 @@ void CarriageCanAdapter::handleMoveRel(const twai_message_t *msg)
    if (_mode == SystemMode::FW_UPDATE)
    {
       USBSerial.printf("CAN carriage reject: id=0x%03lX blocked in FW_UPDATE\n", (unsigned long)msg->identifier);
-      if (_frameCan)
-         _frameCan->sendAck(1, 0);
+      if (_espCan)
+         _espCan->sendAck(1, 0);
       return;
    }
    if (msg->data_length_code != 8)
    {
       USBSerial.printf("CAN carriage reject: id=0x%03lX requires DLC=8\n", (unsigned long)msg->identifier);
-      if (_frameCan)
-         _frameCan->sendAck(1, 1);
+      if (_espCan)
+         _espCan->sendAck(1, 1);
       return;
    }
 
@@ -107,8 +119,8 @@ void CarriageCanAdapter::handleMoveRel(const twai_message_t *msg)
    if (!unpackFloatLE(&msg->data[0], distance))
    {
       USBSerial.printf("CAN carriage reject: id=0x%03lX invalid distance\n", (unsigned long)msg->identifier);
-      if (_frameCan)
-         _frameCan->sendAck(1, 2);
+      if (_espCan)
+         _espCan->sendAck(1, 2);
       return;
    }
 
@@ -118,8 +130,8 @@ void CarriageCanAdapter::handleMoveRel(const twai_message_t *msg)
 
    USBSerial.printf("CAN carriage: REL distance=%.3f speed=%.3f\n", distance, speed);
    _controller->moveRelative(distance, speed);
-   if (_frameCan)
-      _frameCan->sendAck(0, 0);
+   if (_espCan)
+      _espCan->sendAck(0, 0);
 }
 
 void CarriageCanAdapter::handleMoveAbs(const twai_message_t *msg)
@@ -199,22 +211,22 @@ void CarriageCanAdapter::handleHome(const twai_message_t *msg)
       return;
    if (_mode == SystemMode::FW_UPDATE)
    {
-      if (_frameCan)
-         _frameCan->sendAck(1, 0);
+      if (_espCan)
+         _espCan->sendAck(1, 0);
       return;
    }
    if (msg->data_length_code != 8)
    {
-      if (_frameCan)
-         _frameCan->sendAck(1, 1);
+      if (_espCan)
+         _espCan->sendAck(1, 1);
       return;
    }
 
    int16_t vel_x100 = unpackI16LE(&msg->data[0]);
    float vel = (float)vel_x100 / 100.0f;
    _controller->homeMmPerS(vel);
-   if (_frameCan)
-      _frameCan->sendAck(0, 0);
+   if (_espCan)
+      _espCan->sendAck(0, 0);
 }
 
 void CarriageCanAdapter::handleStop()
@@ -225,8 +237,8 @@ void CarriageCanAdapter::handleStop()
    _controller->stop();
    _absMoveDonePending = false;
    _absMoveWasMoving = false;
-   if (_frameCan)
-      _frameCan->sendAck(0, 0);
+   if (_espCan)
+      _espCan->sendAck(0, 0);
 }
 
 void CarriageCanAdapter::sendMoveDone(float positionMm)
@@ -246,4 +258,26 @@ void CarriageCanAdapter::sendMoveDone(float positionMm)
       USBSerial.printf("CAN carriage: MOVE_DONE pos=%.3f\n", positionMm);
    else
       USBSerial.println("CAN carriage: MOVE_DONE send failed");
+}
+
+void CarriageCanAdapter::sendPosition(float positionMm)
+{
+   float velocityMmS = _controller ? _controller->getVelocityMmS() : 0.0f;
+   long velocityX100Long = lroundf(velocityMmS * 100.0f);
+   if (velocityX100Long > INT16_MAX)
+      velocityX100Long = INT16_MAX;
+   else if (velocityX100Long < INT16_MIN)
+      velocityX100Long = INT16_MIN;
+
+   twai_message_t tx = {};
+   tx.identifier = CAN_ID_CARRIAGE_POSITION;
+   tx.data_length_code = 8;
+   tx.flags = 0;
+   std::memcpy(&tx.data[0], &positionMm, sizeof(float));
+   packI16LE(&tx.data[4], (int16_t)velocityX100Long);
+   tx.data[6] = 0;
+   tx.data[7] = 0;
+
+   if (!_router->send(&tx))
+      USBSerial.println("CAN carriage: POSITION send failed");
 }

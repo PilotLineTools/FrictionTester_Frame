@@ -22,6 +22,7 @@ public:
    void stop();
    bool isMoving() const;
    float getPositionMm() const;
+   float getVelocityMmS() const;
 
 private:
    MotionController *_motionController;

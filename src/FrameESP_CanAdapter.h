@@ -1,27 +1,27 @@
 /**
- * FrameCanAdapter - shared system/frame-level CAN helpers.
+ * FrameESP_CanAdapter - shared system/frame-level CAN helpers.
  * Owns FRAME_ACK (0x282) formatting and sequence numbering.
  */
 
-#ifndef FRAME_CAN_ADAPTER_H
-#define FRAME_CAN_ADAPTER_H
+#ifndef FRAME_ESP_CAN_ADAPTER_H
+#define FRAME_ESP_CAN_ADAPTER_H
 
 #include "ICanRouter.h"
 #include "CanCodec.h"
 #include "SystemMode.h"
 #include <stdint.h>
 
-static const uint32_t CAN_ID_FRAME_ACK = 0x282u;
-static const uint32_t CAN_ID_PING_REQUEST = 0x0E0u;
-static const uint32_t CAN_ID_FW_START = 0x0F0u;
-static const uint32_t CAN_ID_FW_END = 0x0F1u;
-static const uint32_t CAN_ID_FW_ABORT = 0x0F2u;
-static const uint32_t CAN_ID_FW_STATUS = 0x0F3u;
+static const uint32_t FRAME_ESP_CAN_ID_ACK = 0x282u;
+static const uint32_t FRAME_ESP_CAN_ID_PING_REQUEST = 0x0E0u;
+static const uint32_t FRAME_ESP_CAN_ID_FW_START = 0x0F0u;
+static const uint32_t FRAME_ESP_CAN_ID_FW_END = 0x0F1u;
+static const uint32_t FRAME_ESP_CAN_ID_FW_ABORT = 0x0F2u;
+static const uint32_t FRAME_ESP_CAN_ID_FW_STATUS = 0x0F3u;
 
-class FrameCanAdapter
+class FrameESP_CanAdapter
 {
 public:
-   explicit FrameCanAdapter(ICanRouter *router);
+   explicit FrameESP_CanAdapter(ICanRouter *router);
    void begin();
 
    /** Sends ACK with auto-incrementing sequence. */
@@ -54,4 +54,4 @@ private:
    void sendFwStatus();
 };
 
-#endif // FRAME_CAN_ADAPTER_H
+#endif // FRAME_ESP_CAN_ADAPTER_H

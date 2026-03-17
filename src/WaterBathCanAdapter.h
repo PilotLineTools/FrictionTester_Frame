@@ -14,7 +14,7 @@
 #define WATER_BATH_CAN_ADAPTER_H
 
 #include "WaterBathController.h"
-#include "FrameCanAdapter.h"
+#include "FrameESP_CanAdapter.h"
 #include "ICanRouter.h"
 #include "CanCodec.h"
 #include "SystemMode.h"
@@ -37,7 +37,7 @@ public:
     * @param controller Water bath controller (must outlive adapter).
     * @param router     CAN router for registering 0x080 and sending frames.
     */
-   WaterBathCanAdapter(WaterBathController *controller, ICanRouter *router, FrameCanAdapter *frameCan);
+   WaterBathCanAdapter(WaterBathController *controller, ICanRouter *router, FrameESP_CanAdapter *frameCan);
 
    /** Register 0x080 handler and set telemetry interval. Call once from setup. */
    void begin();
@@ -55,7 +55,7 @@ public:
 private:
    WaterBathController *_controller;
    ICanRouter *_router;
-   FrameCanAdapter *_frameCan;
+   FrameESP_CanAdapter *_frameCan;
    SystemMode _mode = SystemMode::NORMAL;
 
    uint32_t _lastStatusMs = 0;

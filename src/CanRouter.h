@@ -108,6 +108,16 @@ public:
       return false;
    }
 
+   bool handles(uint32_t id) const override
+   {
+      for (int i = 0; i < CAN_ROUTER_MAX_HANDLERS; i++)
+      {
+         if (_entries[i].used && _entries[i].id == id)
+            return true;
+      }
+      return false;
+   }
+
    bool getStatusInfo(twai_status_info_t &status) const
    {
       return twai_get_status_info(&status) == ESP_OK;

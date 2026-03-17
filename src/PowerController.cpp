@@ -38,8 +38,8 @@ void PowerController::poll10ms()
     _powerLEDTimerMs += 10;
     _powerButtonPressTimerMs += 10;
 
-    // Button assumed active HIGH (pressed when reading HIGH)
-    _powerButtonIsPushed = (digitalRead(POWER_BUTTON_SIGNAL) == HIGH) ? 1 : 0;
+    // Button assumed active LOW (pressed when reading LOW)
+    _powerButtonIsPushed = (digitalRead(POWER_BUTTON_SIGNAL) == LOW) ? 1 : 0;
     bool guiOn = isGuiSignalOn();
 
     // Button edge/hold debug (runs regardless of GUI power state)

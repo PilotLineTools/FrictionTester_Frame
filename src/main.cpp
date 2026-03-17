@@ -30,7 +30,7 @@
 #include "driver/twai.h"
 #include "WaterBathController.h"
 #include "WaterBathCanAdapter.h"
-#include "FrameCanAdapter.h"
+#include "FrameESP_CanAdapter.h"
 #include "CarriageController.h"
 #include "CarriageCanAdapter.h"
 #include "CanRouter.h"
@@ -173,8 +173,8 @@ OneWire oneWireBath(BATH_TEMP_DQ_PIN);
 DallasTemperature bathTempSensor(&oneWireBath);
 WaterBathController waterBathController(HEATER_FET_PIN, &bathTempSensor, &ina219, HEATER_BLOCK_THERMISTOR_PIN);
 CanRouter canRouter;
-FrameCanAdapter frameCanAdapter(&canRouter);
-WaterBathCanAdapter waterBathCanAdapter(&waterBathController, &canRouter, &frameCanAdapter);
+FrameESP_CanAdapter espCanAdapter(&canRouter);
+WaterBathCanAdapter waterBathCanAdapter(&waterBathController, &canRouter, &espCanAdapter);
 CarriageController *carriageController = nullptr;
 CarriageCanAdapter *carriageCanAdapter = nullptr;
 PowerController *powerController = nullptr;
@@ -207,10 +207,19 @@ static void handlePowerNotification(PowerController::Notification n)
 
 static void logCanRxFrame(const twai_message_t &msg)
 {
-   if ((msg.identifier & 0x7FF) == CAN_ID_GUI_HEARTBEAT)
-      return;
+   const uint32_t id = msg.identifier & 0x7FF;
 
-   USBSerial.printf("CAN RX id=0x%03lX dlc=%u data=", (unsigned long)(msg.identifier & 0x7FF), (unsigned)msg.data_length_code);
+   // Only log IDs that this firmware actually handles via the adapters/router.
+   if (!canRouter.handles(id))
+      return;
+   
+   if (id == CAN_ID_SET_POWER || id == CAN_ID_GUI_HEARTBEAT || id == CAN_ID_CLEAR_FAULT || id == CAN_ID_SHUTDOWN_REQUEST)
+   {
+      // These are expected to be sent frequently by the GUI; skip logging to avoid spamming the console.
+      return;
+   }
+
+   USBSerial.printf("CAN RX id=0x%03lX dlc=%u data=", (unsigned long)id, (unsigned)msg.data_length_code);
    for (uint8_t i = 0; i < msg.data_length_code; i++)
       USBSerial.printf("%02X%s", msg.data[i], (i + 1 < msg.data_length_code) ? " " : "");
    USBSerial.println();
@@ -228,7 +237,7 @@ void setup()
    // Latch frame power as early as possible so the user
    // does not need to hold the power button through full boot.
    pinMode(POWER_HOLD_PIN, OUTPUT);
-   digitalWrite(POWER_HOLD_PIN, HIGH);
+   //digitalWrite(POWER_HOLD_PIN, HIGH);
 
    // Basic safety on critical outputs before heavier init.
    pinMode(HEATER_FET_PIN, OUTPUT);
@@ -374,14 +383,14 @@ void setup()
    waterBathController.setCirculatorTargetRpm(0.0f);
    waterBathController.disable();              // both outputs off at boot -> controller disabled
 
-   frameCanAdapter.begin();
+   espCanAdapter.begin();
    waterBathCanAdapter.begin();
 
    powerController = PowerController::setup(handlePowerNotification);
-   powerCanAdapter = new PowerCanAdapter(powerController, &canRouter, &frameCanAdapter);
+   powerCanAdapter = new PowerCanAdapter(powerController, &canRouter, &espCanAdapter);
    powerCanAdapter->begin();
    carriageController = new CarriageController(motionController, carriageAxis);
-   carriageCanAdapter = new CarriageCanAdapter(carriageController, &canRouter, &frameCanAdapter);
+   carriageCanAdapter = new CarriageCanAdapter(carriageController, &canRouter, &espCanAdapter);
    carriageCanAdapter->begin();
 
    // --- TWAI (CAN) Configuration ---
@@ -474,7 +483,7 @@ void loop()
       carriageCanAdapter->tick();
 
    SystemMode mode;
-   if (frameCanAdapter.consumeModeChange(mode))
+   if (espCanAdapter.consumeModeChange(mode))
    {
       waterBathCanAdapter.onModeChanged(mode);
       if (powerCanAdapter)
