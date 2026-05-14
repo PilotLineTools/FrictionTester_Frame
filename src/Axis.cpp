@@ -1,23 +1,45 @@
 #include "Axis.h"
 #include <Arduino.h>
+#include <math.h>
 #include "Constants.h"
 // Declare a weak stall callback the main application can override (C++)
 void onAxisStall(uint8_t axis) __attribute__((weak));
 void onAxisStall(uint8_t axis) {}
 
-// Static tracking for all axes with limit switches
-Axis *Axis::allAxes[MAX_AXES] = {nullptr};
-volatile uint8_t Axis::axisCount = 0;
-
-Axis::Axis() : acceleration(0), currentPosition(0), initialSpeed(0), currentSpeed(0), moving(false) {}
+Axis::Axis()
+    : currentPosition(0),
+      acceleration(0),
+      initialSpeed(0),
+      currentSpeed(0),
+      targetSpeed(0),
+      nextSpeed(0),
+      moving(false),
+      stepsPerUnit(0.0f),
+      startFrequency(0.0f),
+      stepsToGo(0),
+      direction(false)
+{
+  for (int i = 0; i < MAX_MOTORS; ++i)
+  {
+    allMotors[i] = nullptr;
+  }
+}
 
 /// @brief Axis constructor
 /// @param accel Acceleration in units/s^2
 /// @param stepsPerUnit Steps per unit
 Axis::Axis(uint32_t accel, float stepsPerUnit, float startSpeed)
-    : acceleration(accel), stepsPerUnit(stepsPerUnit), currentPosition(0), currentSpeed(0),
-      moving(false), hasMinLimitSwitch(false), hasMaxLimitSwitch(false),
-      startFrequency(startSpeed)
+    : currentPosition(0),
+      acceleration(accel),
+      initialSpeed(0),
+      currentSpeed(0),
+      targetSpeed(0),
+      nextSpeed(0),
+      moving(false),
+      stepsPerUnit(stepsPerUnit),
+      startFrequency(startSpeed),
+      stepsToGo(0),
+      direction(false)
 {
   for (int i = 0; i < MAX_MOTORS; ++i)
   {
@@ -32,6 +54,10 @@ void Axis::init()
   startFrequency = (startFrequency * stepsPerUnit) / 60;
   currentPosition = 0;
   currentSpeed = 0;
+  targetSpeed = 0;
+  nextSpeed = 0;
+  stepsToGo = 0;
+  direction = false;
   moving = false;
   // USBSerial.printf("Axis accelleration set to %d steps/s/s\n", acceleration);
 
@@ -39,72 +65,31 @@ void Axis::init()
   {
     // USBSerial.printf("initializing motor %d\n", i);
     allMotors[i]->init();
+    delay(100); // small delay to allow motors to initialize (especially important for TMC drivers)
   }
 }
 
-// Universal ISR - checks all axes to find which limit switch triggered
-void IRAM_ATTR Axis::limitISR()
+void Axis::clearAttachedLimitSwitches()
 {
-  // Safety check - don't access array if empty
-  if (axisCount == 0)
-    return;
-
-  // Check all registered axes
-  for (uint8_t i = 0; i < axisCount && i < MAX_AXES; i++)
-  {
-    Axis *axis = allAxes[i];
-    if (axis == nullptr)
-      continue;
-
-    // Check min limit if configured
-    if (axis->limitPinMin != 255)
-    {
-      bool pinState = digitalRead(axis->limitPinMin);
-      axis->limitTriggeredMin = (pinState == axis->limitActiveHigh);
-    }
-
-    // Check max limit if configured
-    if (axis->limitPinMax != 255)
-    {
-      bool pinState = digitalRead(axis->limitPinMax);
-      axis->limitTriggeredMax = (pinState == axis->limitActiveHigh);
-    }
-  }
+  // Axis does not own externally provided limit sources; it only detaches.
+  _limitSwitch = nullptr;
+  _hasLimitSwitch = false;
+  _hasDualLimitSource = false;
 }
 
-void Axis::addSingleLimitSwitch(uint8_t limitSwitchPin, bool activeHigh, float clearanceDistanceUnits)
+void Axis::updateSingleLimitClearance(float clearanceDistanceUnits)
 {
-  // Single limit switch configuration (for both directions)
-  // This can be used for regular limit switches or TMC StallGuard DIAG pin
-  limitPinMin = limitSwitchPin;
-  limitActiveHigh = activeHigh;
-  hasMinLimitSwitch = true;
-  hasMaxLimitSwitch = false;
-
-  // Convert clearance distance from units to steps
-  limitClearanceDistance = (int32_t)(clearanceDistanceUnits * stepsPerUnit);
+  // Convert clearance distance from units to steps.
+  // Keep any non-zero configured clearance at >= 1 step so we don't immediately
+  // re-enable the blocked direction due to integer truncation.
+  const float clearanceStepsF = fabsf(clearanceDistanceUnits * stepsPerUnit);
+  if (clearanceStepsF <= 0.0f)
+    limitClearanceDistance = 0;
+  else
+    limitClearanceDistance = max((int32_t)1, (int32_t)lroundf(clearanceStepsF));
 
   USBSerial.printf("Axis: Single limit clearance distance set to %.2f units (%ld steps)\n",
                    clearanceDistanceUnits, limitClearanceDistance);
-
-  // Configure pin mode - use pullup for active LOW, regular INPUT for active HIGH
-  pinMode(limitPinMin, activeHigh ? INPUT : INPUT_PULLUP);
-
-  // Register this axis if there's room
-  if (axisCount < MAX_AXES)
-  {
-    uint8_t myIndex = axisCount;
-    allAxes[myIndex] = this;
-    axisCount++; // Increment after assignment
-
-    // Attach universal ISR to this pin
-    attachInterrupt(digitalPinToInterrupt(limitPinMin), limitISR, CHANGE);
-    USBSerial.printf("Axis: Attached limit switch on pin %d (axis %d/%d)\n", limitPinMin, myIndex + 1, MAX_AXES);
-  }
-  else
-  {
-    USBSerial.printf("ERROR: Maximum %d axes with limit switches supported! Increase MAX_AXES.\n", MAX_AXES);
-  }
 }
 
 void Axis::addMotor(Motor &motor)
@@ -119,52 +104,103 @@ void Axis::addMotor(Motor &motor)
   motorCount++;
 }
 
-void Axis::addLimitSwitch(uint8_t limitSwitchMinPin, uint8_t limitSwitchMaxPin, bool activeHigh)
+void Axis::addLimitSwitch(LimitSwitch &limitSwitch, float clearanceDistanceUnits)
 {
-  // Separate limit switches for min and max directions
-  limitPinMin = limitSwitchMinPin;
-  limitPinMax = limitSwitchMaxPin;
-  limitActiveHigh = activeHigh;
-  hasMinLimitSwitch = true;
-  hasMaxLimitSwitch = true;
+  clearAttachedLimitSwitches();
 
-  // Configure pin modes
-  pinMode(limitPinMin, activeHigh ? INPUT : INPUT_PULLUP);
-  pinMode(limitPinMax, activeHigh ? INPUT : INPUT_PULLUP);
+  _limitSwitch = &limitSwitch;
+  _hasLimitSwitch = true;
+  // The LimitSwitch instance decides whether this axis behaves as single or dual.
+  _hasDualLimitSource = limitSwitch.supportsMax();
+  _limitSwitch->begin();
 
-  // Register this axis if there's room
-  if (axisCount < MAX_AXES)
+  if (_hasDualLimitSource)
   {
-    uint8_t myIndex = axisCount;
-    allAxes[myIndex] = this;
-    axisCount++; // Increment after assignment
-
-    // Attach universal ISR to both pins
-    attachInterrupt(digitalPinToInterrupt(limitPinMin), limitISR, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(limitPinMax), limitISR, CHANGE);
-    USBSerial.printf("Axis: Attached min/max limits on pins %d/%d (axis %d/%d)\n",
-                     limitPinMin, limitPinMax, myIndex + 1, MAX_AXES);
+    limitClearanceDistance = 0;
+    USBSerial.println("Axis: Attached combined min/max limit source");
   }
   else
   {
-    USBSerial.printf("ERROR: Maximum %d axes with limit switches supported! Increase MAX_AXES.\n", MAX_AXES);
+    updateSingleLimitClearance(clearanceDistanceUnits);
+    USBSerial.println("Axis: Attached single-direction limit source");
   }
+}
+
+void Axis::setSingleLimitDirections(bool allowPositiveDirectionTrigger, bool allowNegativeDirectionTrigger)
+{
+  singleLimitAppliesPositive = allowPositiveDirectionTrigger;
+  singleLimitAppliesNegative = allowNegativeDirectionTrigger;
 }
 
 // Note: initLimitSwitches() removed - initialization happens in addLimitSwitch() via interrupts
 
 bool Axis::checkLimitSwitches()
 {
-  if (!hasMinLimitSwitch && !hasMaxLimitSwitch)
+  if (!_hasLimitSwitch)
     return false; // bail if there are no limit switches
 
-  static bool wasTriggeredMin = false;
-  static bool wasTriggeredMax = false;
-  bool limitChanged = false;
-
-  if (hasMaxLimitSwitch)
+  // Phase 1: Sample raw limit inputs and map them into limitTriggeredMin/Max.
+  // For dual-limit setups this is direct state mapping.
+  // For single-limit setups we infer which side was hit from motion direction.
+  if (_hasDualLimitSource)
   {
-    // Two separate limit switches (min and max)
+    _limitSwitch->tick();
+    const LimitSwitchState state = _limitSwitch->getState();
+    limitTriggeredMin = state.minTriggered;
+    limitTriggeredMax = state.maxTriggered;
+  }
+  else
+  {
+    if (_limitSwitch)
+    {
+      _limitSwitch->tick();
+      const bool rawTriggered = _limitSwitch->getState().minTriggered;
+      const bool directionAllowsTrigger = direction ? singleLimitAppliesPositive : singleLimitAppliesNegative;
+      bool stallguardConfirmed = true;
+      // Remote single sources already represent filtered logical limit state,
+      // so StallGuard confirmation is only meaningful for local DIAG-based sources.
+      const bool checkStallguard = !_limitSwitch->isRemote();
+      if (checkStallguard && rawTriggered && moving && motorCount > 0 && allMotors[0] != nullptr)
+      {
+        DriverInterface *driver = allMotors[0]->getDriver();
+        if (driver != nullptr && strcmp(driver->getDriverType(), "TMC2209") == 0)
+        {
+          TMC2209Driver *tmc = static_cast<TMC2209Driver *>(driver);
+          const uint16_t sgValue = tmc->getSGResult();
+          const uint16_t sgThreshold = tmc->getSGTHRS();
+          stallguardConfirmed = (sgValue <= sgThreshold);
+          if (!stallguardConfirmed)
+          {
+            USBSerial.printf("Axis: ignoring DIAG high without StallGuard confirm (sg=%u thrs=%u dir=%s)\n",
+                             (unsigned)sgValue,
+                             (unsigned)sgThreshold,
+                             direction ? "POSITIVE" : "NEGATIVE");
+          }
+        }
+      }
+      const bool filteredTriggered = rawTriggered && directionAllowsTrigger && stallguardConfirmed;
+      if (filteredTriggered)
+      {
+        const bool positiveLimitHit = moving ? direction : limitDirectionWasPositive;
+        limitTriggeredMin = !positiveLimitHit;
+        limitTriggeredMax = positiveLimitHit;
+      }
+      else
+      {
+        limitTriggeredMin = false;
+        limitTriggeredMax = false;
+      }
+    }
+  }
+
+  bool limitChanged = false;
+  bool capturedLimitPositionThisTick = false;
+
+  // Phase 2: Apply policy based on wiring mode.
+  // Dual-limit mode directly blocks motion toward the active side.
+  if (_hasDualLimitSource)
+  {
+    // Combined dual-limit source: direct min/max enforcement.
     if (limitTriggeredMin != wasTriggeredMin)
     {
       limitChanged = true;
@@ -187,19 +223,33 @@ bool Axis::checkLimitSwitches()
 
     canMoveNegative = !limitTriggeredMin; // Disallow negative direction if min limit is triggered
     canMovePositive = !limitTriggeredMax; // Disallow positive direction if max limit is triggered
+
+    // Publish limit-hit events for dual sources so higher layers (e.g. carriage CAN adapter)
+    // can emit LIMIT_HIT/HOMED on the same unified event path used by single-limit mode.
+    if (limitChanged && (limitTriggeredMin || limitTriggeredMax) && moving)
+    {
+      positionAtLimit = currentPosition;
+      capturedLimitPositionThisTick = true;
+      limitDirectionWasPositive = direction;
+      _pendingLimitHit.valid = true;
+      _pendingLimitHit.positionUnits = getPosition();
+      _pendingLimitHit.directionCode = limitTriggeredMax ? 1u : 0u;
+    }
   }
-  else if (hasMinLimitSwitch)
+  else
   {
-    // Single limit switch (for both directions) - typically DIAG pin or single physical limit
-    if (limitTriggeredMin != wasTriggeredMin)
+    // Single limit switch mode (e.g. DIAG/stall or one physical switch).
+    // A trigger is directional: block the hit direction, allow backing away.
+    if (limitTriggeredMin != wasTriggeredMin || limitTriggeredMax != wasTriggeredMax)
     {
       limitChanged = true;
       wasTriggeredMin = limitTriggeredMin;
+      wasTriggeredMax = limitTriggeredMax;
 
-      // Check if we're decelerating (ignore false stalls during decel)
+      // Ignore false stalls before motion is actually underway or while decelerating.
+      bool hasMotionSpeed = currentSpeed > 0;
       bool isDecelerating = currentSpeed > targetSpeed;
-      // if (limitTriggeredMin && moving) // Only trigger when actively moving
-      if (limitTriggeredMin && moving && !isDecelerating) // Only trigger when moving AND not decelerating
+      if ((limitTriggeredMin || limitTriggeredMax) && moving && hasMotionSpeed && !isDecelerating)
       {
         USBSerial.printf("*** LIMIT/STALL DETECTED ***\n");
         // Read StallGuard IMMEDIATELY - don't delay, read it right now
@@ -219,21 +269,33 @@ bool Axis::checkLimitSwitches()
 
         // Record position and direction when limit was hit
         positionAtLimit = currentPosition;
+        capturedLimitPositionThisTick = true;
         limitDirectionWasPositive = direction;
+        _pendingLimitHit.valid = true;
+        _pendingLimitHit.positionUnits = getPosition();
+        _pendingLimitHit.directionCode = direction ? 1u : 0u;
 
-        // Stop movement in current direction ONLY
+        // Directional lockout: only the hit direction is blocked.
+        // The opposite direction remains enabled so recovery move is possible.
         if (direction)
+        {
           canMovePositive = false;
+          canMoveNegative = true;
+        }
         else
+        {
           canMoveNegative = false;
+          canMovePositive = true;
+        }
 
         USBSerial.printf("  AFTER: canMovePos=%d, canMoveNeg=%d\n", canMovePositive, canMoveNegative);
-        // Notify application of stall/limit event
-        onAxisStall((uint8_t)(this == Axis::allAxes[0] ? 0 : 1));
+        // Notify application of stall/limit event with the configured axis ID when available.
+        onAxisStall(isValidAxisId(_axisId) ? axisToIndex(_axisId) : 0);
       }
-      else if (!limitTriggeredMin && !moving && (!canMovePositive || !canMoveNegative))
+      else if (!limitTriggeredMin && !limitTriggeredMax && !moving && (!canMovePositive || !canMoveNegative))
       {
-        // Motion has stopped after hitting limit - correct position to where we actually hit it
+        // If the signal already cleared, keep the axis position pinned to the
+        // captured hit position until clearance logic re-enables movement.
         if (currentPosition != positionAtLimit)
         {
           USBSerial.printf(">>> Position corrected: %ld -> %ld (stopped after stall)\n",
@@ -247,9 +309,17 @@ bool Axis::checkLimitSwitches()
     // Check if we've moved far enough away from the limit to re-enable that direction
     if (!canMovePositive || !canMoveNegative)
     {
+      // Single-switch StallGuard should always allow motion away from the hit side.
+      if (limitDirectionWasPositive)
+        canMoveNegative = true;
+      else
+        canMovePositive = true;
+
       int32_t distanceMoved = currentPosition - positionAtLimit;
 
-      // If we were moving positive and hit limit, need to move negative to clear
+      // Re-enable only after configured clearance distance from captured hit point.
+      // This prevents immediate retrigger chatter near the stop.
+      // If we were moving positive and hit limit, need to move negative to clear.
       if (limitDirectionWasPositive && distanceMoved <= -limitClearanceDistance)
       {
         canMovePositive = true;
@@ -264,15 +334,36 @@ bool Axis::checkLimitSwitches()
     }
   }
 
-  // If any limit switch was triggered, stop the axis in the prescribed "stop distance"
-  if (limitChanged && (!canMovePositive || !canMoveNegative))
+  const bool activeSingleLimit = limitTriggeredMin || limitTriggeredMax;
+
+  // Phase 3: Synchronize controller state with physical stop condition.
+  // On a fresh active limit transition while moving, force motion state to stopped.
+  // Do not retrigger this while simply backing away from a previously latched hit.
+  if (limitChanged && activeSingleLimit && moving)
   {
+    // If this transition was not accepted as a fresh stall/limit capture (for example
+    // noise/chatter while decelerating), never snap to a stale historical limit position.
+    if (!capturedLimitPositionThisTick)
+      positionAtLimit = currentPosition;
     targetSpeed = 0;
-    stepsToGo = stopDistance;
+    stepsToGo = 0;
+    currentSpeed = 0;
+    moving = false;
+    currentPosition = positionAtLimit;
+    USBSerial.printf(">>> Axis motion cancelled at limit position %ld\n", positionAtLimit);
   }
 
   // Return true if any limit switch is currently triggered
   return limitTriggeredMin || limitTriggeredMax;
+}
+
+bool Axis::consumeLimitHitEvent(LimitHitEvent &eventOut)
+{
+  if (!_pendingLimitHit.valid)
+    return false;
+  eventOut = _pendingLimitHit;
+  _pendingLimitHit.valid = false;
+  return true;
 }
 
 void Axis::setDirection(bool _direction)
@@ -324,6 +415,9 @@ void Axis::disable()
 void Axis::zero()
 {
   currentPosition = 0;
+  // Keep limit-recovery reference aligned with externally-forced position so
+  // stale positionAtLimit cannot overwrite a freshly-zeroed axis.
+  positionAtLimit = currentPosition;
   isHomed = true; // Mark axis as homed when zeroed
   USBSerial.println("Axis zeroed and marked as HOMED");
 }
@@ -333,6 +427,8 @@ void Axis::zero()
 void Axis::setPosition(int32_t position)
 {
   currentPosition = position;
+  // Keep limit-recovery reference aligned with externally-forced position.
+  positionAtLimit = currentPosition;
 }
 
 /// @brief gets the current position of the axis

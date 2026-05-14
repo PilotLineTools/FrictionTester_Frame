@@ -244,7 +244,7 @@ void TMC2209Driver::setRpmActual(float rpm)
         vactual = -vactual;
 
     _stepper->VACTUAL(vactual);
-    USBSerial.printf("[%s] RPM set to %.1f -> VACTUAL=%d (usteps/s=%.1f)\n", _name, rpm, vactual, ustepsPerSec);
+    //USBSerial.printf("[%s] RPM set to %.1f -> VACTUAL=%d (usteps/s=%.1f)\n", _name, rpm, vactual, ustepsPerSec);
 
 } 
 

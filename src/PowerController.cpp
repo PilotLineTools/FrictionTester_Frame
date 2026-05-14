@@ -5,7 +5,6 @@
  *  - POWER_BUTTON_SIGNAL: user power button (active when LOW).
  *  - CAN heartbeat (0x012): Pi CAN alive indication.
  *  - POWER_HOLD_PIN: latch power (HIGH to hold on, LOW to cut).
- *  - LED_BUILTIN_PIN: power status LED.
  *
  * poll10ms() must be called every 10 ms from the 100 Hz timer3 loop.
  */
@@ -17,25 +16,17 @@ static constexpr uint16_t POWER_BUTTON_PRESS_TIMEOUT_MS = 100;   // timeout betw
 static constexpr uint16_t POWER_BUTTON_HOLD_OFF_TIME_MS = 2000; // hold to request shutdown
 static constexpr uint32_t PI_CAN_HEARTBEAT_TIMEOUT_MS = 3000;    // 1 s heartbeat + jitter margin
 
-// LED blink intervals in ms
-static constexpr uint16_t LED_BLINK_FAST_MS = 200;
-static constexpr uint16_t LED_BLINK_SLOW_MS = 1000;
-static constexpr uint16_t LED_BLINK_SHUTTING_MS = 500;
-
 PowerController::PowerController()
 {
     pinMode(POWER_HOLD_PIN, OUTPUT);
     digitalWrite(POWER_HOLD_PIN, HIGH); // latch power on at boot
 
     pinMode(POWER_BUTTON_SIGNAL, INPUT);
-    pinMode(LED_BUILTIN_PIN, OUTPUT);
-    digitalWrite(LED_BUILTIN_PIN, _powerLED);
 }
 
 void PowerController::poll10ms()
 {
     // 10 ms per call
-    _powerLEDTimerMs += 10;
     _powerButtonPressTimerMs += 10;
 
     // Button assumed active LOW (pressed when reading LOW)
@@ -88,19 +79,9 @@ void PowerController::poll10ms()
     {
     case GuiPowerState::OFF:
     {
-        // GUI has no power yet (GUI_SHUTDOWN_PIN HIGH): fast blink, wait for first LOW.
-        uint16_t interval = LED_BLINK_FAST_MS;
-        if (_powerLEDTimerMs >= interval)
-        {
-            _powerLEDTimerMs = 0;
-            _powerLED = _powerLED ? 0 : 1;
-        }
-
         if (guiOn)
         {
             _guiPowerState = GuiPowerState::ACTIVE;
-            _powerLED = 1;
-            _powerLEDTimerMs = 0;
             USBSerial.println("GUI power detected (pin LOW), entering ACTIVE");
             emit(Notification::GUIPoweredOn);
         }
@@ -109,13 +90,6 @@ void PowerController::poll10ms()
 
     case GuiPowerState::BOOTING_UP:
     {
-        // Legacy transitional state: GUI power alone determines on/off.
-        uint16_t interval = LED_BLINK_SLOW_MS;
-        if (_powerLEDTimerMs >= interval)
-        {
-            _powerLEDTimerMs = 0;
-            _powerLED = _powerLED ? 0 : 1;
-        }
         if (!guiOn)
         {
             _guiPowerState = GuiPowerState::OFF;
@@ -123,17 +97,12 @@ void PowerController::poll10ms()
         else
         {
             _guiPowerState = GuiPowerState::ACTIVE;
-            _powerLED = 1;
-            _powerLEDTimerMs = 0;
             emit(Notification::GUIPoweredOn);
         }
     }
     break;
 
     case GuiPowerState::ACTIVE:
-        _powerLED = 1;
-        _powerLEDTimerMs = 0;
-
         if (!guiOn)
         {
             _guiPowerState = GuiPowerState::OFF;
@@ -159,12 +128,6 @@ void PowerController::poll10ms()
         break;
 
     case GuiPowerState::SHUTTING_DOWN:
-        if (_powerLEDTimerMs >= LED_BLINK_SHUTTING_MS)
-        {
-            _powerLEDTimerMs = 0;
-            _powerLED = _powerLED ? 0 : 1;
-        }
-
         // Wait for GUI to power off (GUI_SHUTDOWN_PIN HIGH) before cutting frame power
         if (!guiOn)
         {
@@ -174,7 +137,6 @@ void PowerController::poll10ms()
         break;
 
     case GuiPowerState::SHUT_DOWN:
-        _powerLED = 0;
         digitalWrite(POWER_HOLD_PIN, LOW); // cut power
         if (!guiOn)
             _guiPowerState = GuiPowerState::OFF;
@@ -182,7 +144,6 @@ void PowerController::poll10ms()
     }
 
     _previousPowerButtonIsPushed = _powerButtonIsPushed;
-    digitalWrite(LED_BUILTIN_PIN, _powerLED);
 }
 
 void PowerController::requestShutdownFromRemote()
@@ -207,6 +168,15 @@ void PowerController::onGuiHeartbeat(uint32_t nowMs)
 {
     _lastGuiHeartbeatMs = nowMs;
     _guiHeartbeatSeen = true;
+
+    // If GUI power signal is present and we receive a heartbeat, promote startup
+    // states to ACTIVE so health checks can pass after normal boot.
+    if (isGuiSignalOn() &&
+        (_guiPowerState == GuiPowerState::OFF || _guiPowerState == GuiPowerState::BOOTING_UP))
+    {
+        _guiPowerState = GuiPowerState::ACTIVE;
+        emit(Notification::GUIPoweredOn);
+    }
 }
 
 bool PowerController::isGuiSignalOn() const
@@ -243,11 +213,6 @@ bool PowerController::setGuiPowerStateCode(uint8_t code)
     case GuiPowerState::SHUTTING_DOWN:
     case GuiPowerState::SHUT_DOWN:
         _guiPowerState = static_cast<GuiPowerState>(code);
-        if (_guiPowerState == GuiPowerState::ACTIVE)
-        {
-            _powerLED = 1;
-            _powerLEDTimerMs = 0;
-        }
         return true;
     default:
         return false;
@@ -262,8 +227,6 @@ void PowerController::checkStartupState(bool guiOn)
         if (guiOn)
         {
             _guiPowerState = GuiPowerState::ACTIVE;
-            _powerLED = 1;
-            _powerLEDTimerMs = 0;
             emit(Notification::GUIPoweredOn);
         }
     }

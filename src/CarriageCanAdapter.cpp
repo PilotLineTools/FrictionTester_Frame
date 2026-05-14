@@ -8,16 +8,32 @@ CarriageCanAdapter::CarriageCanAdapter(CarriageController *controller, ICanRoute
 {
 }
 
+LimitSwitchState CarriageCanAdapter::readLimitState() const
+{
+   // Axis polling reads this snapshot through LimitSwitch(remoteSource).
+   LimitSwitchState state = {};
+   state.minTriggered = _remoteMinTriggered;
+   state.maxTriggered = _remoteMaxTriggered;
+   return state;
+}
+
 void CarriageCanAdapter::begin()
 {
    if (!_router)
       return;
    _router->on(CAN_ID_CARRIAGE_SET_ACCELERATION, &CarriageCanAdapter::staticHandleSetAcceleration, this);
-   _router->on(CAN_ID_CARRIAGE_JOG, &CarriageCanAdapter::staticHandleJog, this);
+   _router->on(CAN_ID_CARRIAGE_LIMIT_STATUS, &CarriageCanAdapter::staticHandleLimitStatus, this);
    _router->on(CAN_ID_CARRIAGE_HOME, &CarriageCanAdapter::staticHandleHome, this);
    _router->on(CAN_ID_CARRIAGE_MOVE_REL, &CarriageCanAdapter::staticHandleMoveRel, this);
    _router->on(CAN_ID_CARRIAGE_MOVE_ABS, &CarriageCanAdapter::staticHandleMoveAbs, this);
    _router->on(CAN_ID_CARRIAGE_STOP, &CarriageCanAdapter::staticHandleStop, this);
+}
+
+void CarriageCanAdapter::requestLimitStatus()
+{
+   if (!_router)
+      return;
+   sendLimitsRequest();
 }
 
 void CarriageCanAdapter::tick()
@@ -32,6 +48,21 @@ void CarriageCanAdapter::tick()
    {
       sendPosition(_controller->getPositionMm());
       _lastPositionTxMs = nowMs;
+   }
+
+   float limitHitPositionMm = 0.0f;
+   uint8_t limitHitDirection = 0;
+   if (_controller->consumeLimitHitEvent(limitHitPositionMm, limitHitDirection))
+   {
+      if (_controller->isHoming())
+      {
+         _controller->zeroPosition();
+         sendHomed(1u, _controller->getPositionMm());
+      }
+      else
+      {
+         sendLimitHit(limitHitPositionMm, limitHitDirection);
+      }
    }
 
    if (!_absMoveDonePending)
@@ -74,11 +105,11 @@ void CarriageCanAdapter::staticHandleSetAcceleration(const twai_message_t *msg, 
       adapter->handleSetAcceleration(msg);
 }
 
-void CarriageCanAdapter::staticHandleJog(const twai_message_t *msg, void *ctx)
+void CarriageCanAdapter::staticHandleLimitStatus(const twai_message_t *msg, void *ctx)
 {
    auto *adapter = static_cast<CarriageCanAdapter *>(ctx);
    if (adapter)
-      adapter->handleJog(msg);
+      adapter->handleLimitStatus(msg);
 }
 
 void CarriageCanAdapter::staticHandleHome(const twai_message_t *msg, void *ctx)
@@ -182,27 +213,24 @@ void CarriageCanAdapter::handleSetAcceleration(const twai_message_t *msg)
    _controller->setAccelerationMmPerS2(accel);
 }
 
-void CarriageCanAdapter::handleJog(const twai_message_t *msg)
+void CarriageCanAdapter::handleLimitStatus(const twai_message_t *msg)
 {
-   (void)msg;
    if (!_controller)
       return;
 
-   // Get first 2 bytes as signed int16 speed in mm/s * 100; ignore rest of payload
-   // Convert to float mm/min and jog at that speed. If speed is zero, stop jogging.
-   // Note: the speed is a request, and the controller may jog at a different actual
+   if (msg->data_length_code < 2)
+   {
+      USBSerial.printf("CAN carriage reject: id=0x%03lX requires DLC>=2\n", (unsigned long)msg->identifier);
+      return;
+   }
 
-   int16_t speed_x100 = unpackI16LE(&msg->data[0]);
-   float velocityMmS = (float)speed_x100 / 100.0f;
-   float velocityMmMin = velocityMmS * 60.0f;
+   const bool minTriggered = (msg->data[0] != 0);
+   const bool maxTriggered = (msg->data[1] != 0);
+   // Cache latest remote limit state for Axis::checkLimitSwitches polling path.
+   _remoteMinTriggered = minTriggered;
+   _remoteMaxTriggered = maxTriggered;
 
-   USBSerial.printf("CAN carriage: JOG velocity=%.2f mm/s (%.2f mm/min)\n", velocityMmS, velocityMmMin);
-   _controller->jogMmPerS(velocityMmS);
-
-   // Testing mode: ignore incoming payload and always jog at a fixed speed.
-   // constexpr float kTestJogMmPerS = 2.0f; // ~1000 mm/min
-   // USBSerial.printf("CAN carriage: JOG test speed=%.2f mm/s\n", kTestJogMmPerS);
-   // _controller->jogMmPerS(kTestJogMmPerS);
+   USBSerial.printf("CAN carriage: LIMIT_STATUS min=%u max=%u\n", minTriggered ? 1 : 0, maxTriggered ? 1 : 0);
 }
 
 void CarriageCanAdapter::handleHome(const twai_message_t *msg)
@@ -217,14 +245,25 @@ void CarriageCanAdapter::handleHome(const twai_message_t *msg)
    }
    if (msg->data_length_code != 8)
    {
+      USBSerial.printf("CAN carriage reject: id=0x%03lX requires DLC=8\n", (unsigned long)msg->identifier);
       if (_espCan)
          _espCan->sendAck(1, 1);
       return;
    }
 
-   int16_t vel_x100 = unpackI16LE(&msg->data[0]);
-   float vel = (float)vel_x100 / 100.0f;
-   _controller->homeMmPerS(vel);
+   int16_t velocityX100 = unpackI16LE(&msg->data[0]);
+   float velocityMmS = (float)velocityX100 / 100.0f;
+   USBSerial.printf("CAN carriage: HOME velocity=%.3f mm/s\n", velocityMmS);
+   _controller->homeMmPerS(velocityMmS);
+
+   // If homing was requested but no motion started (for example, hard limit
+   // already active in the homing direction), treat current position as home.
+   if (_controller->isHoming() && !_controller->isMoving())
+   {
+      _controller->zeroPosition();
+      sendHomed(1u, _controller->getPositionMm());
+   }
+   
    if (_espCan)
       _espCan->sendAck(0, 0);
 }
@@ -234,11 +273,73 @@ void CarriageCanAdapter::handleStop()
    if (!_controller)
       return;
    USBSerial.println("CAN carriage: STOP");
+   const bool wasHoming = _controller->isHoming();
+   const float positionMm = _controller->getPositionMm();
+   _controller->cancelHoming();
    _controller->stop();
    _absMoveDonePending = false;
    _absMoveWasMoving = false;
+   if (wasHoming)
+      sendHomed(0u, positionMm);
    if (_espCan)
       _espCan->sendAck(0, 0);
+}
+
+void CarriageCanAdapter::sendHomed(uint8_t result, float positionMm)
+{
+   twai_message_t tx = {};
+   tx.identifier = CAN_ID_CARRIAGE_HOMED;
+   tx.data_length_code = 8;
+   tx.flags = 0;
+   tx.data[0] = result;
+   std::memcpy(&tx.data[1], &positionMm, sizeof(float));
+   tx.data[5] = 0;
+   tx.data[6] = 0;
+   tx.data[7] = 0;
+
+   if (_router->send(&tx))
+      USBSerial.printf("CAN carriage: HOMED result=%u pos=%.3f\n", (unsigned)result, positionMm);
+   else
+      USBSerial.println("CAN carriage: HOMED send failed");
+}
+
+void CarriageCanAdapter::sendLimitsRequest()
+{
+   twai_message_t tx = {};
+   tx.identifier = CAN_ID_CARRIAGE_LIMITS_REQUEST;
+   tx.data_length_code = 8;
+   tx.flags = 0;
+   tx.data[0] = 0;
+   tx.data[1] = 0;
+   tx.data[2] = 0;
+   tx.data[3] = 0;
+   tx.data[4] = 0;
+   tx.data[5] = 0;
+   tx.data[6] = 0;
+   tx.data[7] = 0;
+
+   if (_router->send(&tx))
+      USBSerial.println("CAN carriage: LIMITS_REQUEST sent");
+   else
+      USBSerial.println("CAN carriage: LIMITS_REQUEST send failed");
+}
+
+void CarriageCanAdapter::sendLimitHit(float positionMm, uint8_t direction)
+{
+   twai_message_t tx = {};
+   tx.identifier = CAN_ID_CARRIAGE_LIMIT_HIT;
+   tx.data_length_code = 8;
+   tx.flags = 0;
+   std::memcpy(&tx.data[0], &positionMm, sizeof(float));
+   tx.data[4] = direction;
+   tx.data[5] = 0;
+   tx.data[6] = 0;
+   tx.data[7] = 0;
+
+   if (_router->send(&tx))
+      USBSerial.printf("CAN carriage: LIMIT_HIT pos=%.3f dir=%u\n", positionMm, (unsigned)direction);
+   else
+      USBSerial.println("CAN carriage: LIMIT_HIT send failed");
 }
 
 void CarriageCanAdapter::sendMoveDone(float positionMm)

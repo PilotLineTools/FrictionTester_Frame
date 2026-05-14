@@ -11,6 +11,7 @@
 #include "SystemMode.h"
 #include <stdint.h>
 
+static const uint32_t FRAME_ESP_CAN_ID_HEARTBEAT = 0x013u;
 static const uint32_t FRAME_ESP_CAN_ID_ACK = 0x282u;
 static const uint32_t FRAME_ESP_CAN_ID_PING_REQUEST = 0x0E0u;
 static const uint32_t FRAME_ESP_CAN_ID_FW_START = 0x0F0u;
@@ -26,6 +27,7 @@ public:
 
    /** Sends ACK with auto-incrementing sequence. */
    void sendAck(uint8_t result, uint8_t detailCode);
+   void sendHeartbeat(float waterC, float blockC, float currentA, bool heaterOn, bool enabled);
    bool consumeModeChange(SystemMode &modeOut);
 
 private:

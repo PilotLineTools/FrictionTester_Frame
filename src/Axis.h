@@ -5,35 +5,48 @@
 #include <stdint.h>
 #include "Motor.h"
 #include "TMC2209Driver.h" // For StallGuard access
+#include "LimitSwitch.h"
+#include "AxisId.h"
 
 #define MAX_MOTORS 2 // should this be in config?
-#define MAX_AXES 4   // Maximum number of axes that can have limit switches
 
 class Axis
 {
+public:
+  struct LimitState
+  {
+    bool minTriggered = false;
+    bool maxTriggered = false;
+  };
+  struct LimitHitEvent
+  {
+    bool valid = false;
+    float positionUnits = 0.0f;
+    uint8_t directionCode = 0u;
+  };
+
 private:
   Motor *allMotors[MAX_MOTORS]; // array of motor objects (at least pointers to them)
   uint8_t motorCount = 0;       // number of motors in the array
 
   int32_t stopDistance = 0; // how far to travel after a limit switch is tripped (in steps)
-  bool hasMinLimitSwitch = false;
-  bool hasMaxLimitSwitch = false;
+  // Unified limit wiring model: one attached LimitSwitch object that can report
+  // either single-direction state (min only) or dual min/max state.
+  bool _hasLimitSwitch = false;
+  bool _hasDualLimitSource = false;
+  LimitSwitch *_limitSwitch = nullptr;
 
-  // Limit switch pins and state
-  uint8_t limitPinMin = 255;
-  uint8_t limitPinMax = 255;
-  bool limitActiveHigh = false; // true = active HIGH, false = active LOW (with pullup)
   volatile bool limitTriggeredMin = false;
   volatile bool limitTriggeredMax = false;
+  bool wasTriggeredMin = false;
+  bool wasTriggeredMax = false;
 
   // For single limit switch: track stall and clearance
   int32_t limitClearanceDistance = 0;     // Distance (in steps) to move away before re-enabling blocked direction
   int32_t positionAtLimit = 0;            // Position where limit was triggered
   bool limitDirectionWasPositive = false; // Direction we were moving when limit triggered
-
-  // Static tracking for all axes (for ISR routing)
-  static Axis *allAxes[MAX_AXES];
-  static volatile uint8_t axisCount;
+  bool singleLimitAppliesPositive = true;
+  bool singleLimitAppliesNegative = true;
 
   // bool direction; // direction to move the axis (only motors are reversed)
 
@@ -57,8 +70,10 @@ public:
 
   void init();
   void addMotor(Motor &motor);
-  void addSingleLimitSwitch(uint8_t limitSwitchPin, bool activeHigh, float clearanceDistanceUnits); // Single limit switch with clearance distance
-  void addLimitSwitch(uint8_t limitSwitchMinPin, uint8_t limitSwitchMaxPin, bool activeHigh);       // Two separate limit switches
+  // Single API for all limit sources (local/remote, single/dual).
+  // If the source is single-direction, clearanceDistanceUnits controls re-enable distance.
+  void addLimitSwitch(LimitSwitch &limitSwitch, float clearanceDistanceUnits = 0.0f);
+  void setSingleLimitDirections(bool allowPositiveDirectionTrigger, bool allowNegativeDirectionTrigger);
   void setDirection(bool _direction);
   void stepHigh(); // Set the step pin high and get out
   void stepLow();
@@ -78,9 +93,31 @@ public:
   void checkAndDisableAtZero();            // Check if at zero and disable motor if configured
   void setHomed(bool homed);               // Set homing state (true = position is known)
   bool getIsHomed();                       // Get homing state
+  bool hasMinLimit() const { return _hasLimitSwitch; }
+  bool hasMaxLimit() const { return _hasDualLimitSource; }
+  bool isSingleLimitRawTriggered() const { return _limitSwitch && !_hasDualLimitSource && _limitSwitch->getState().minTriggered; }
+  bool isSingleLimitDirectionEnabled(bool positiveDirection) const
+  {
+    return positiveDirection ? singleLimitAppliesPositive : singleLimitAppliesNegative;
+  }
+  bool isMinLimitTriggered() const { return limitTriggeredMin; }
+  bool isMaxLimitTriggered() const { return limitTriggeredMax; }
+  LimitState getLimitState() const { 
+    LimitState state;
+    state.minTriggered = limitTriggeredMin;
+    state.maxTriggered = limitTriggeredMax;
+    return state;
+  }
+  uint8_t getLimitDirectionCode() const { return limitTriggeredMax ? 1u : 0u; }
+  bool consumeLimitHitEvent(LimitHitEvent &eventOut);
+  void setAxisId(AxisId axisId) { _axisId = axisId; }
+  AxisId getAxisId() const { return _axisId; }
 
-  // Universal ISR handler - checks all axes to find which one triggered
-  static void IRAM_ATTR limitISR();
+private:
+  void clearAttachedLimitSwitches();
+  void updateSingleLimitClearance(float clearanceDistanceUnits);
+  LimitHitEvent _pendingLimitHit = {};
+  AxisId _axisId = AxisId::Invalid;
 };
 
 #endif // AXIS_H

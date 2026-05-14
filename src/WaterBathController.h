@@ -99,6 +99,8 @@ public:
    bool isHeaterEnableRequested() const { return _heaterRequestEnabled; }
    /** Requested circulator RPM from command layer. Applied only when controller is enabled and fault-free. */
    void setCirculatorTargetRpm(float rpm);
+   /** Circulator ramp rate in RPM/s for slew-limited setpoint changes. */
+   void setCirculatorAccelRpmPerSec(float accelRpmPerSec);
    float getCirculatorTargetRpm() const { return _circulatorTargetRpm; }
 
 private:
@@ -139,6 +141,8 @@ private:
    Motor *_circulatorMotor = nullptr;
    TMC2209Driver *_circulatorDriver = nullptr;
    float _circulatorTargetRpm = 0.0f;
+   float _circulatorAppliedRpm = 0.0f;
+   float _circulatorAccelRpmPerSec = 200.0f;
 
    void setHeaterOn(bool on);
    void enableHeater();

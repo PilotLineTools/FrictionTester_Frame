@@ -5,7 +5,6 @@
  * - Interprets POWER_BUTTON_SIGNAL (short vs long press) for shutdown.
  * - Tracks GUI power from GUI_SHUTDOWN_PIN.
  * - Tracks Pi CAN availability via CAN heartbeat (0x012) timeout.
- * - Drives LED_BUILTIN_PIN to indicate state.
  *
  * poll10ms() is called every 10 ms from the 100 Hz timer3 loop.
  */
@@ -69,10 +68,6 @@ private:
     NotificationCallback _notificationCallback = nullptr;
 
     GuiPowerState _guiPowerState = GuiPowerState::OFF;
-
-    // Timers and state (in milliseconds where noted)
-    uint8_t _powerLED = 1;
-    uint16_t _powerLEDTimerMs = 0;
 
     uint8_t _powerButtonIsPushed = 0;
     uint8_t _previousPowerButtonIsPushed = 0;

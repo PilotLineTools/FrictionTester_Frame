@@ -84,6 +84,13 @@ void WaterBathController::setCirculatorTargetRpm(float rpm)
    applyCirculator();
 }
 
+void WaterBathController::setCirculatorAccelRpmPerSec(float accelRpmPerSec)
+{
+   if (accelRpmPerSec < 1.0f)
+      accelRpmPerSec = 1.0f;
+   _circulatorAccelRpmPerSec = accelRpmPerSec;
+}
+
 void WaterBathController::setPid(float kp, float ki, float kd)
 {
    _kp = kp;
@@ -148,13 +155,19 @@ void WaterBathController::applyCirculator()
 {
    // Circulator follows commanded RPM whenever controller is enabled.
    // This is intentionally independent from heater request/errors.
-   float rpm = _enabled ? _circulatorTargetRpm : 0.0f;
+   const float targetRpm = _enabled ? _circulatorTargetRpm : 0.0f;
+   const float maxStep = _circulatorAccelRpmPerSec * _dt;
+   const float delta = targetRpm - _circulatorAppliedRpm;
+   if (fabsf(delta) <= maxStep)
+      _circulatorAppliedRpm = targetRpm;
+   else
+      _circulatorAppliedRpm += (delta > 0.0f) ? maxStep : -maxStep;
 
    if (_circulatorDriver != nullptr)
-      _circulatorDriver->setRpmActual(rpm);
+      _circulatorDriver->setRpmActual(_circulatorAppliedRpm);
 
    if (_circulatorMotor != nullptr)
-      (rpm > 0.0f) ? _circulatorMotor->enable() : _circulatorMotor->disable();
+      (_circulatorAppliedRpm > 0.0f) ? _circulatorMotor->enable() : _circulatorMotor->disable();
 }
 
 void WaterBathController::enableCirculator()
@@ -164,6 +177,7 @@ void WaterBathController::enableCirculator()
 
 void WaterBathController::disableCirculator()
 {
+   _circulatorAppliedRpm = 0.0f;
    if (_circulatorDriver != nullptr)
       _circulatorDriver->setRpmActual(0.0f);
 
@@ -173,6 +187,7 @@ void WaterBathController::disableCirculator()
 
 void WaterBathController::update()
 {
+   applyCirculator();
    _bathTempC = _bathSensor->getTempCByIndex(0);
    _blockTempC = readBlockTempC();
    _heaterCurrentA = _currentSensor->getCurrent();

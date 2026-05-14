@@ -253,18 +253,18 @@ void MotionController::moveRel(uint8_t axis, float distance, float targetSpeed)
    makeMoves();
 }
 
-void MotionController::moveAbs(uint8_t axis, float distance, float targetSpeed)
+void MotionController::moveAbs(uint8_t axis, float targetPos, float targetSpeed)
 {
 
    // Convert target position from mm to steps for comparison
-   int32_t targetPosSteps = axisArray[axis]->stepsPerUnit * distance;
+   int32_t targetPosSteps = axisArray[axis]->stepsPerUnit * targetPos;
    bool _direction = targetPosSteps > axisArray[axis]->currentPosition ? 1 : 0;
 
    USBSerial.printf("MotionController moveAbs: axis=%d, currentPos=%ld steps (%.1fmm), targetPos=%.1fmm (%ld steps), targetSpeed=%.1fmm/s, dir=%s, canMovePos=%d, canMoveNeg=%d\n",
                     axis,
                     axisArray[axis]->currentPosition,
                     axisArray[axis]->currentPosition / axisArray[axis]->stepsPerUnit,
-                    distance,
+                    targetPos,
                     targetPosSteps,
                     targetSpeed,
                     _direction ? "POS" : "NEG",
@@ -288,7 +288,7 @@ void MotionController::moveAbs(uint8_t axis, float distance, float targetSpeed)
       return;
    }
 
-   addAbsoluteMove(axis, distance, targetSpeed);
+   addAbsoluteMove(axis, targetPos, targetSpeed);
    makeMoves();
 }
 

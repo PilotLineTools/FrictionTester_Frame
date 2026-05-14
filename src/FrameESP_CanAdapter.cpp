@@ -1,5 +1,6 @@
 #include "FrameESP_CanAdapter.h"
 #include <Arduino.h>
+#include <algorithm>
 #include "driver/twai.h"
 
 FrameESP_CanAdapter::FrameESP_CanAdapter(ICanRouter *router)
@@ -38,6 +39,34 @@ void FrameESP_CanAdapter::sendAck(uint8_t result, uint8_t detailCode)
 
    _router->send(&tx);
    _ackSeq++;
+}
+
+void FrameESP_CanAdapter::sendHeartbeat(float waterC, float blockC, float currentA, bool heaterOn, bool enabled)
+{
+   if (!_router)
+      return;
+
+   twai_message_t tx = {};
+   tx.identifier = FRAME_ESP_CAN_ID_HEARTBEAT;
+   tx.data_length_code = 8;
+   tx.flags = 0;
+
+   // Mirror BATH_STATUS payload packing:
+   // [0..1]=waterC*100 (i16 LE), [2..3]=blockC*100 (i16 LE),
+   // [4..5]=current_mA (u16 LE, clamped), [6]=heaterOn, [7]=enabled.
+   int16_t water_x100 = (int16_t)(waterC * 100.0f);
+   int16_t block_x100 = (int16_t)(blockC * 100.0f);
+   int32_t current_mA = (int32_t)(currentA * 1000.0f);
+   current_mA = std::max((int32_t)0, std::min((int32_t)65535, current_mA));
+   uint16_t current_u16 = (uint16_t)current_mA;
+
+   packI16LE(&tx.data[0], water_x100);
+   packI16LE(&tx.data[2], block_x100);
+   packU16LE(&tx.data[4], current_u16);
+   tx.data[6] = heaterOn ? 1 : 0;
+   tx.data[7] = enabled ? 1 : 0;
+
+   _router->send(&tx);
 }
 
 bool FrameESP_CanAdapter::consumeModeChange(SystemMode &modeOut)

@@ -11,18 +11,19 @@
 #define CARRIAGE_ENABLE_PIN (GPIO_NUM_10) // IO10 Enable
 #define CARRIAGE_DIAG_PIN (GPIO_NUM_3)  // IO3 Diagnostic / StallGuard
 #define CARRIAGE_INVERT_DIRECTION (1)    // Inverts direction
-#define CARRIAGE_ACCEL (15)             // mm/s^2
-#define CARRIAGE_LEADSCREW_PITCH (2.0f)  // mm per revolution (steps/mm = MOTOR_STEPS_PER_REV * microsteps / pitch)
+#define CARRIAGE_ACCEL (50)             // mm/s^2
+#define CARRIAGE_MM_PER_REV (2.0f)  // mm per revolution (steps/mm = MOTOR_STEPS_PER_REV * microsteps / pitch)
 // CARRIAGE_STEPS_PER_UNIT = MOTOR_STEPS_PER_REV × CARRIAGE_TMC_MICROSTEPS (defined in TMC section below)
 #define CARRIAGE_START_SPEED (5)       // mm/min
-#define CARRIAGE_JOG_SPEED (3000)        // mm/min
+#define CARRIAGE_JOG_SPEED (300)        // mm/min
+#define CLAMP_STALL_CLEARANCE_UNITS (0.01f)
 
 #define BATH_STEP_PIN (GPIO_NUM_36)   // IO36  Step
 #define BATH_DIR_PIN (GPIO_NUM_35)   // IO35 Direction
 #define BATH_ENABLE_PIN (GPIO_NUM_38) // IO38 Enable
 #define BATH_DIAG_PIN (GPIO_NUM_37)  // IO37 Diagnostic / StallGuard
 #define BATH_INVERT_DIRECTION (1)    // Inverts direction
-#define BATH_ACCEL (1500)             // mm/s^2
+#define BATH_ACCEL (200)             // mm/s^2
 #define BATH_STEPS_PER_UNIT (200)  // Steps per revolution (200 steps/rev for 1.8° motors) divided by mm per revolution (e.g. 4 mm/rev leads to 50 steps/mm)
 #define BATH_START_SPEED (500)       // mm/min
 #define BATH_JOG_SPEED (3000)        // mm/min
