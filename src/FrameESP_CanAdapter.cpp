@@ -199,6 +199,16 @@ void FrameESP_CanAdapter::handleFwStart(const twai_message_t *msg)
 
 void FrameESP_CanAdapter::handleFwEnd(const twai_message_t *msg)
 {
+   if (_mode != SystemMode::FW_UPDATE || !_otaInProgress || !_otaPartition)
+   {
+      USBSerial.printf("FRAME: FW_END ignored (not in FW_UPDATE) mode=%u ota=%u\n",
+                       (unsigned)_mode,
+                       _otaInProgress ? 1u : 0u);
+      sendAck(1, 22);
+      sendFwStatus(0xFF, 22, 0);
+      return;
+   }
+
    if (msg->data_length_code < 5 || msg->data_length_code > 8)
    {
       sendAck(1, 12);
@@ -221,13 +231,6 @@ void FrameESP_CanAdapter::handleFwEnd(const twai_message_t *msg)
                        (unsigned)lastSeq);
       sendAck(1, 13);
       sendFwStatus(0xFF, 13, lastSeq);
-      return;
-   }
-
-   if (!_otaInProgress || !_otaPartition)
-   {
-      sendAck(1, 22);
-      sendFwStatus(0xFF, 22, lastSeq);
       return;
    }
 
@@ -279,8 +282,9 @@ void FrameESP_CanAdapter::handleFwEnd(const twai_message_t *msg)
                     (unsigned long)_bytesReceived);
    sendAck(0, 0);
    sendFwStatus(2, 0, lastSeq);
+   // Do not force immediate reboot here; host can request reboot after transfer.
+   // This avoids reboot loops when FW_END traffic is replayed/retried on the bus.
    delay(100);
-   esp_restart();
 }
 
 void FrameESP_CanAdapter::handleFwAbort(const twai_message_t *msg)
