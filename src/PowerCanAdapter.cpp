@@ -42,9 +42,11 @@ void PowerCanAdapter::onPowerNotification(PowerController::Notification n)
    {
    case PowerController::Notification::GUIPoweredOn:
       eventCode = 1;
+      sendPowerStatus(eventCode);
       break;
    case PowerController::Notification::ShutdownInitiated:
       eventCode = 2;
+      sendPowerStatus(eventCode);
       break;
    case PowerController::Notification::ShutdownRequested:
       eventCode = 3;
