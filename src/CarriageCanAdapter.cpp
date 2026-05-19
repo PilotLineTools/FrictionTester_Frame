@@ -3,9 +3,18 @@
 #include <cstring>
 #include <math.h>
 
+static constexpr uint32_t CARRIAGE_HEARTBEAT_TIMEOUT_MS = 3000; // Match Pi heartbeat timeout window
+
 CarriageCanAdapter::CarriageCanAdapter(CarriageController *controller, ICanRouter *router, FrameESP_CanAdapter *espCan)
    : _controller(controller), _router(router), _espCan(espCan)
 {
+}
+
+bool CarriageCanAdapter::isCarriageHeartbeatAlive() const
+{
+   if (!_carriageHeartbeatSeen)
+      return false;
+   return (millis() - _lastCarriageHeartbeatMs) <= CARRIAGE_HEARTBEAT_TIMEOUT_MS;
 }
 
 LimitSwitchState CarriageCanAdapter::readLimitState() const
@@ -27,6 +36,7 @@ void CarriageCanAdapter::begin()
    _router->on(CAN_ID_CARRIAGE_MOVE_REL, &CarriageCanAdapter::staticHandleMoveRel, this);
    _router->on(CAN_ID_CARRIAGE_MOVE_ABS, &CarriageCanAdapter::staticHandleMoveAbs, this);
    _router->on(CAN_ID_CARRIAGE_STOP, &CarriageCanAdapter::staticHandleStop, this);
+   _router->on(CAN_ID_CARRIAGE_HEARTBEAT, &CarriageCanAdapter::staticHandleCarriageHeartbeat, this);
 }
 
 void CarriageCanAdapter::requestLimitStatus()
@@ -127,6 +137,13 @@ void CarriageCanAdapter::staticHandleStop(const twai_message_t *msg, void *ctx)
       adapter->handleStop();
 }
 
+void CarriageCanAdapter::staticHandleCarriageHeartbeat(const twai_message_t *msg, void *ctx)
+{
+   auto *adapter = static_cast<CarriageCanAdapter *>(ctx);
+   if (adapter)
+      adapter->handleCarriageHeartbeat(msg);
+}
+
 void CarriageCanAdapter::handleMoveRel(const twai_message_t *msg)
 {
    if (!_controller)
@@ -221,6 +238,8 @@ void CarriageCanAdapter::handleLimitStatus(const twai_message_t *msg)
    if (msg->data_length_code < 2)
    {
       USBSerial.printf("CAN carriage reject: id=0x%03lX requires DLC>=2\n", (unsigned long)msg->identifier);
+      if (_espCan)
+         _espCan->sendAck(1, 27);
       return;
    }
 
@@ -231,6 +250,8 @@ void CarriageCanAdapter::handleLimitStatus(const twai_message_t *msg)
    _remoteMaxTriggered = maxTriggered;
 
    USBSerial.printf("CAN carriage: LIMIT_STATUS min=%u max=%u\n", minTriggered ? 1 : 0, maxTriggered ? 1 : 0);
+   if (_espCan)
+      _espCan->sendAck(0, 0);
 }
 
 void CarriageCanAdapter::handleHome(const twai_message_t *msg)
@@ -283,6 +304,13 @@ void CarriageCanAdapter::handleStop()
       sendHomed(0u, positionMm);
    if (_espCan)
       _espCan->sendAck(0, 0);
+}
+
+void CarriageCanAdapter::handleCarriageHeartbeat(const twai_message_t *msg)
+{
+   (void)msg;
+   _lastCarriageHeartbeatMs = millis();
+   _carriageHeartbeatSeen = true;
 }
 
 void CarriageCanAdapter::sendHomed(uint8_t result, float positionMm)

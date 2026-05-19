@@ -15,6 +15,7 @@
 #include <stdint.h>
 
 static const uint32_t CAN_ID_CARRIAGE_STOP = 0x0A0u;
+static const uint32_t CAN_ID_CARRIAGE_HEARTBEAT = 0x014u;
 static const uint32_t CAN_ID_CARRIAGE_POSITION = 0x301u;
 static const uint32_t CAN_ID_CARRIAGE_SET_ACCELERATION = 0x0A1u;
 static const uint32_t CAN_ID_CARRIAGE_LIMIT_STATUS = 0x0A2u;
@@ -36,6 +37,7 @@ public:
    void onModeChanged(SystemMode mode) { _mode = mode; }
    SystemMode getMode() const { return _mode; }
    LimitSwitchState readLimitState() const override;
+   bool isCarriageHeartbeatAlive() const;
 
 private:
    static constexpr uint32_t POSITION_TX_INTERVAL_MS = 50;
@@ -50,6 +52,7 @@ private:
    static void staticHandleLimitStatus(const twai_message_t *msg, void *ctx);
    static void staticHandleHome(const twai_message_t *msg, void *ctx);
    static void staticHandleStop(const twai_message_t *msg, void *ctx);
+   static void staticHandleCarriageHeartbeat(const twai_message_t *msg, void *ctx);
 
    void handleMoveRel(const twai_message_t *msg);
    void handleMoveAbs(const twai_message_t *msg);
@@ -57,6 +60,7 @@ private:
    void handleLimitStatus(const twai_message_t *msg);
    void handleHome(const twai_message_t *msg);
    void handleStop();
+   void handleCarriageHeartbeat(const twai_message_t *msg);
    void sendHomed(uint8_t result, float positionMm);
    void sendLimitsRequest();
    void sendLimitHit(float positionMm, uint8_t direction);
@@ -69,6 +73,8 @@ private:
    volatile bool _remoteMinTriggered = false;
    volatile bool _remoteMaxTriggered = false;
    uint32_t _lastPositionTxMs = 0;
+   uint32_t _lastCarriageHeartbeatMs = 0;
+   bool _carriageHeartbeatSeen = false;
 };
 
 #endif // CARRIAGE_CAN_ADAPTER_H

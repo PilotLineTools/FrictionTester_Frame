@@ -12,7 +12,7 @@
 #include <Arduino.h>
 
 #ifndef CAN_ROUTER_MAX_HANDLERS
-#define CAN_ROUTER_MAX_HANDLERS 16
+#define CAN_ROUTER_MAX_HANDLERS 24
 #endif
 
 struct CanRouterEntry
@@ -47,6 +47,9 @@ public:
             return;
          }
       }
+      USBSerial.printf("CAN router registration dropped: id=0x%03lX (max handlers=%u)\n",
+                       (unsigned long)(id & 0x7FF),
+                       (unsigned)CAN_ROUTER_MAX_HANDLERS);
    }
 
    bool send(const twai_message_t *msg) override
@@ -127,12 +130,41 @@ public:
    {
       twai_status_info_t status = {};
       if (!getStatusInfo(status))
+      {
+         USBSerial.println("CAN health: unable to read TWAI status");
          return false;
+      }
 
-      return (status.state == TWAI_STATE_RUNNING) &&
-             (status.tx_error_counter == 0) &&
-             (status.rx_error_counter == 0) &&
-             (status.bus_error_count == 0);
+      const bool stateOk = (status.state == TWAI_STATE_RUNNING);
+      const bool txOk = (status.tx_error_counter == 0);
+      const bool rxOk = (status.rx_error_counter == 0);
+      const bool busOk = (status.bus_error_count == 0);
+      const bool healthy = stateOk && txOk && rxOk && busOk;
+
+      if (!healthy)
+      {
+         USBSerial.printf("CAN health: unhealthy state=%s(%d) tx_err=%u rx_err=%u bus_err=%u arb_lost=%u tx_failed=%u rx_missed=%u rx_overrun=%u\n",
+                          twaiStateToString(status.state),
+                          (int)status.state,
+                          (unsigned)status.tx_error_counter,
+                          (unsigned)status.rx_error_counter,
+                          (unsigned)status.bus_error_count,
+                          (unsigned)status.arb_lost_count,
+                          (unsigned)status.tx_failed_count,
+                          (unsigned)status.rx_missed_count,
+                          (unsigned)status.rx_overrun_count);
+
+         if (!stateOk)
+            USBSerial.printf("CAN health detail: state must be RUNNING but is %s\n", twaiStateToString(status.state));
+         if (!txOk)
+            USBSerial.printf("CAN health detail: tx_error_counter=%u (expected 0)\n", (unsigned)status.tx_error_counter);
+         if (!rxOk)
+            USBSerial.printf("CAN health detail: rx_error_counter=%u (expected 0)\n", (unsigned)status.rx_error_counter);
+         if (!busOk)
+            USBSerial.printf("CAN health detail: bus_error_count=%u (expected 0)\n", (unsigned)status.bus_error_count);
+      }
+
+      return healthy;
    }
 
    /** Call from main loop when twai_receive() returns a frame; dispatches to registered handler. */
@@ -156,6 +188,23 @@ public:
    }
 
 private:
+   static const char *twaiStateToString(twai_state_t state)
+   {
+      switch (state)
+      {
+      case TWAI_STATE_STOPPED:
+         return "STOPPED";
+      case TWAI_STATE_RUNNING:
+         return "RUNNING";
+      case TWAI_STATE_BUS_OFF:
+         return "BUS_OFF";
+      case TWAI_STATE_RECOVERING:
+         return "RECOVERING";
+      default:
+         return "UNKNOWN";
+      }
+   }
+
    CanRouterEntry _entries[CAN_ROUTER_MAX_HANDLERS];
 };
 

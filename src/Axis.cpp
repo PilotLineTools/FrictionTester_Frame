@@ -377,6 +377,20 @@ void Axis::setDirection(bool _direction)
 
 void Axis::stepHigh()
 {
+  bool anyMotorEnabled = false;
+  for (uint8_t i = 0; i < motorCount; i++)
+  {
+    if (allMotors[i] && allMotors[i]->isEnabled())
+    {
+      anyMotorEnabled = true;
+      break;
+    }
+  }
+
+  // Do not advance software position if all motors are disabled.
+  if (!anyMotorEnabled)
+    return;
+
   if (direction)
     currentPosition++; // if we're moving in the positive direction and we can move positive increase the current position
   else
@@ -410,6 +424,13 @@ void Axis::disable()
   { // disable all motors
     allMotors[i]->disable();
   }
+
+  // Keep logical motion state in sync with physical disable so position telemetry
+  // does not continue to drift while outputs are off.
+  moving = false;
+  stepsToGo = 0;
+  currentSpeed = 0;
+  targetSpeed = 0;
 }
 
 void Axis::zero()

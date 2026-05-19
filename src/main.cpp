@@ -112,7 +112,9 @@ static HealthLed pcbHealthLed(LED_BUILTIN_PIN);
 static const uint32_t HEARTBEAT_TX_INTERVAL_MS = 100;
 static bool lastPiCanAliveState = false;
 static bool piCanAliveStateInit = false;
-static bool piHeartbeatSafetyLockout = false;
+static bool lastCarriageCanAliveState = false;
+static bool carriageCanAliveStateInit = false;
+static bool heartbeatSafetyLockout = false;
 
 // ---------------------------------------------------------------------------
 // Machine parameters (NVS-backed; serial menu to set)
@@ -243,6 +245,11 @@ static HealthLedState computePcbHealthState()
       USBSerial.println("Health check: Pi CAN not alive");
       return HealthLedState::Fault;
    }
+   if (!carriageCanAdapter->isCarriageHeartbeatAlive())
+   {
+      USBSerial.println("Health check: carriage CAN heartbeat not alive");
+      return HealthLedState::Fault;
+   }
 
    // 3) Application-level state reported by GUI (must be in ACTIVE mode).
    const uint8_t stateCode = powerController->getGuiPowerStateCode();
@@ -264,7 +271,7 @@ static void logCanRxFrame(const twai_message_t &msg)
    if (!canRouter.handles(id))
       return;
    
-   if (id == CAN_ID_SET_POWER || id == CAN_ID_GUI_HEARTBEAT || id == CAN_ID_CLEAR_FAULT || id == CAN_ID_SHUTDOWN_REQUEST )
+   if (id == CAN_ID_SET_POWER || id == CAN_ID_GUI_HEARTBEAT || id == CAN_ID_CLEAR_FAULT || id == CAN_ID_SHUTDOWN_REQUEST || id == CAN_ID_CARRIAGE_HEARTBEAT)
    {
       // These are expected to be sent frequently by the GUI; skip logging to avoid spamming the console.
       return;
@@ -622,6 +629,22 @@ static void refreshHealthLedState()
                           (unsigned long)3000UL);
       }
    }
+   if (carriageCanAdapter)
+   {
+      const bool carriageAliveNow = carriageCanAdapter->isCarriageHeartbeatAlive();
+      if (!carriageCanAliveStateInit)
+      {
+         lastCarriageCanAliveState = carriageAliveNow;
+         carriageCanAliveStateInit = true;
+      }
+      else if (carriageAliveNow != lastCarriageCanAliveState)
+      {
+         lastCarriageCanAliveState = carriageAliveNow;
+         USBSerial.printf("Carriage CAN heartbeat %s (timeout=%lu ms)\n",
+                          carriageAliveNow ? "RESTORED" : "LOST",
+                          (unsigned long)100UL);
+      }
+   }
 
 #if HEARTBEAT_LED_EN
    pcbHealthLed.setState(computePcbHealthState());
@@ -630,16 +653,22 @@ static void refreshHealthLedState()
 
 static void enforcePiHeartbeatSafety()
 {
-   if (!powerController)
+   if (!powerController || !carriageCanAdapter)
       return;
 
    const bool piAliveNow = powerController->isPiCanAlive();
-   if (!piAliveNow)
+   const bool carriageAliveNow = carriageCanAdapter->isCarriageHeartbeatAlive();
+   if (!piAliveNow || !carriageAliveNow)
    {
-      if (!piHeartbeatSafetyLockout)
+      if (!heartbeatSafetyLockout)
       {
-         piHeartbeatSafetyLockout = true;
-         USBSerial.println("SAFETY: Pi CAN heartbeat lost -> stopping carriage, bath motor, and heater");
+         heartbeatSafetyLockout = true;
+         if (!piAliveNow && !carriageAliveNow)
+            USBSerial.println("SAFETY: Pi CAN + carriage CAN heartbeat lost -> stopping carriage, bath motor, and heater");
+         else if (!piAliveNow)
+            USBSerial.println("SAFETY: Pi CAN heartbeat lost -> stopping carriage, bath motor, and heater");
+         else
+            USBSerial.println("SAFETY: carriage CAN heartbeat lost -> stopping carriage, bath motor, and heater");
          if (carriageController)
             carriageController->stop();
          waterBathController.setHeaterEnableRequest(false);
@@ -656,10 +685,10 @@ static void enforcePiHeartbeatSafety()
       return;
    }
 
-   if (piHeartbeatSafetyLockout)
+   if (heartbeatSafetyLockout)
    {
-      piHeartbeatSafetyLockout = false;
-      USBSerial.println("SAFETY: Pi CAN heartbeat restored -> controls can be re-enabled by commands");
+      heartbeatSafetyLockout = false;
+      USBSerial.println("SAFETY: Pi CAN + carriage CAN heartbeats restored -> controls can be re-enabled by commands");
    }
 }
 
