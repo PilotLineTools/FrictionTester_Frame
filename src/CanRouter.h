@@ -135,11 +135,13 @@ public:
          return false;
       }
 
+      // Use live bus health signals that can recover over time.
+      // bus_error_count is cumulative on TWAI, so keep it as diagnostic only.
+      static constexpr uint32_t CAN_ERROR_COUNTER_HEALTHY_MAX = 95;
       const bool stateOk = (status.state == TWAI_STATE_RUNNING);
-      const bool txOk = (status.tx_error_counter == 0);
-      const bool rxOk = (status.rx_error_counter == 0);
-      const bool busOk = (status.bus_error_count == 0);
-      const bool healthy = stateOk && txOk && rxOk && busOk;
+      const bool txOk = (status.tx_error_counter <= CAN_ERROR_COUNTER_HEALTHY_MAX);
+      const bool rxOk = (status.rx_error_counter <= CAN_ERROR_COUNTER_HEALTHY_MAX);
+      const bool healthy = stateOk && txOk && rxOk;
 
       if (!healthy)
       {
@@ -160,8 +162,8 @@ public:
             USBSerial.printf("CAN health detail: tx_error_counter=%u (expected 0)\n", (unsigned)status.tx_error_counter);
          if (!rxOk)
             USBSerial.printf("CAN health detail: rx_error_counter=%u (expected 0)\n", (unsigned)status.rx_error_counter);
-         if (!busOk)
-            USBSerial.printf("CAN health detail: bus_error_count=%u (expected 0)\n", (unsigned)status.bus_error_count);
+         if (status.bus_error_count > 0)
+            USBSerial.printf("CAN health detail: bus_error_count=%u (cumulative; informational)\n", (unsigned)status.bus_error_count);
       }
 
       return healthy;
