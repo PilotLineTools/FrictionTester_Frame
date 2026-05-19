@@ -1,9 +1,11 @@
 #include "FrameESP_CanAdapter.h"
 #include <Arduino.h>
 #include <algorithm>
+#include <cstring>
 #include "driver/twai.h"
 #include "esp_system.h"
 #include "esp_rom_crc.h"
+#include <Update.h>
 
 static constexpr bool ENABLE_CAN_OTA = true;
 
@@ -18,7 +20,7 @@ void FrameESP_CanAdapter::begin()
       return;
    _router->on(FRAME_ESP_CAN_ID_PING_REQUEST, &FrameESP_CanAdapter::staticHandlePingRequest, this);
    _router->on(FRAME_ESP_CAN_ID_FW_START, &FrameESP_CanAdapter::staticHandleFwStart, this);
-    _router->on(FRAME_ESP_CAN_ID_FW_DATA, &FrameESP_CanAdapter::staticHandleFwData, this);
+   _router->on(FRAME_ESP_CAN_ID_FW_DATA, &FrameESP_CanAdapter::staticHandleFwData, this);
    _router->on(FRAME_ESP_CAN_ID_FW_END, &FrameESP_CanAdapter::staticHandleFwEnd, this);
    _router->on(FRAME_ESP_CAN_ID_FW_ABORT, &FrameESP_CanAdapter::staticHandleFwAbort, this);
    _router->on(FRAME_ESP_CAN_ID_FW_STATUS, &FrameESP_CanAdapter::staticHandleFwStatus, this);
@@ -169,32 +171,20 @@ void FrameESP_CanAdapter::handleFwStart(const twai_message_t *msg)
    _lastChunkSeq = 0;
    _lastAbortReason = 0;
 
-   const esp_partition_t *nextPartition = esp_ota_get_next_update_partition(nullptr);
-   if (!nextPartition)
-   {
-      USBSerial.println("FRAME: FW_START no OTA partition available");
-      sendAck(1, 20);
-      sendFwStatus(0xFF, 20, 0);
-      return;
-   }
-
    if (_otaInProgress)
    {
-      esp_ota_abort(_otaHandle);
+      if (Update.isRunning())
+         Update.abort();
       _otaInProgress = false;
-      _otaHandle = 0;
-      _otaPartition = nullptr;
    }
 
-   esp_err_t otaErr = esp_ota_begin(nextPartition, _imageSizeBytes, &_otaHandle);
-   if (otaErr != ESP_OK)
+   if (!Update.begin(_imageSizeBytes, U_FLASH))
    {
-      USBSerial.printf("FRAME: FW_START ota_begin failed err=%ld\n", (long)otaErr);
+      USBSerial.printf("FRAME: FW_START Update.begin failed err=%u\n", (unsigned)Update.getError());
       sendAck(1, 21);
       sendFwStatus(0xFF, 21, 0);
       return;
    }
-   _otaPartition = nextPartition;
    _otaInProgress = true;
 
    setMode(SystemMode::FW_UPDATE);
@@ -255,13 +245,14 @@ void FrameESP_CanAdapter::handleFwData(const twai_message_t *msg)
       return;
    }
 
-   esp_err_t otaErr = esp_ota_write(_otaHandle, &msg->data[2], chunkLen);
-   if (otaErr != ESP_OK)
+   uint8_t chunkBuf[6] = {0};
+   memcpy(chunkBuf, &msg->data[2], chunkLen);
+   size_t written = Update.write(chunkBuf, chunkLen);
+   if (written != chunkLen)
    {
-      esp_ota_abort(_otaHandle);
+      if (Update.isRunning())
+         Update.abort();
       _otaInProgress = false;
-      _otaHandle = 0;
-      _otaPartition = nullptr;
       sendAck(1, 27);
       sendFwStatus(0xFF, 27, seq);
       return;
@@ -279,7 +270,7 @@ void FrameESP_CanAdapter::handleFwEnd(const twai_message_t *msg)
       return;
    }
 
-   if (_mode != SystemMode::FW_UPDATE || !_otaInProgress || !_otaPartition)
+   if (_mode != SystemMode::FW_UPDATE || !_otaInProgress)
    {
       sendAck(1, 22);
       sendFwStatus(0xFF, 22, 0);
@@ -308,43 +299,29 @@ void FrameESP_CanAdapter::handleFwEnd(const twai_message_t *msg)
 
    if (_imageCrc32 != _expectedImageCrc32)
    {
-      esp_ota_abort(_otaHandle);
+      if (Update.isRunning())
+         Update.abort();
       _otaInProgress = false;
-      _otaHandle = 0;
-      _otaPartition = nullptr;
       sendAck(1, 23);
       sendFwStatus(0xFF, 23, lastSeq);
       return;
    }
 
-   esp_err_t otaErr = esp_ota_end(_otaHandle);
-   if (otaErr != ESP_OK)
+   if (!Update.end())
    {
+      USBSerial.printf("FRAME: FW_END Update.end failed err=%u\n", (unsigned)Update.getError());
       _otaInProgress = false;
-      _otaHandle = 0;
-      _otaPartition = nullptr;
       sendAck(1, 24);
       sendFwStatus(0xFF, 24, lastSeq);
       return;
    }
 
-   otaErr = esp_ota_set_boot_partition(_otaPartition);
-   if (otaErr != ESP_OK)
-   {
-      _otaInProgress = false;
-      _otaHandle = 0;
-      _otaPartition = nullptr;
-      sendAck(1, 25);
-      sendFwStatus(0xFF, 25, lastSeq);
-      return;
-   }
-
    _otaInProgress = false;
-   _otaHandle = 0;
-   _otaPartition = nullptr;
    setMode(SystemMode::NORMAL);
    sendAck(0, 0);
    sendFwStatus(2, 0, lastSeq);
+   delay(100);
+   esp_restart();
 }
 
 void FrameESP_CanAdapter::handleFwAbort(const twai_message_t *msg)
@@ -361,10 +338,9 @@ void FrameESP_CanAdapter::handleFwAbort(const twai_message_t *msg)
    _bytesReceived = 0;
    if (_otaInProgress)
    {
-      esp_ota_abort(_otaHandle);
+      if (Update.isRunning())
+         Update.abort();
       _otaInProgress = false;
-      _otaHandle = 0;
-      _otaPartition = nullptr;
    }
    setMode(SystemMode::NORMAL);
    USBSerial.printf("FRAME: FW_ABORT reason=%u\n", (unsigned)_lastAbortReason);

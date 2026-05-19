@@ -10,7 +10,6 @@
 #include "CanCodec.h"
 #include "SystemMode.h"
 #include <stdint.h>
-#include "esp_ota_ops.h"
 
 static const uint32_t FRAME_ESP_CAN_ID_HEARTBEAT = 0x013u;
 static const uint32_t FRAME_ESP_CAN_ID_ACK = 0x282u;
@@ -45,8 +44,6 @@ private:
    uint8_t _lastChunkSeq = 0;
    uint8_t _lastAbortReason = 0;
    bool _otaInProgress = false;
-   esp_ota_handle_t _otaHandle = 0;
-   const esp_partition_t *_otaPartition = nullptr;
 
    static void staticHandlePingRequest(const twai_message_t *msg, void *ctx);
    static void staticHandleFwStart(const twai_message_t *msg, void *ctx);
