@@ -314,10 +314,11 @@ void WaterBathController::update()
       setHeaterOn(_heaterOn);
    }
 
+   /*
    USBSerial.printf("WB FLOW ctrl update: bath=%.2fC block=%.2fC current=%.3fA heaterOn=%d error=%s\n",
                     _bathTempC, _blockTempC, _heaterCurrentA, _heaterOn, errorToString(_errorCode));
    USBSerial.printf("WB FLOW ctrl check: current=%.3f A limits [%.3f, %.3f] A\n", _heaterCurrentA, _heaterCurrentMinA, _heaterCurrentMaxA);
-
+   */
    _bathSensor->requestTemperatures();  // for next update()
 }
 
