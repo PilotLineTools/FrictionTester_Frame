@@ -115,6 +115,9 @@ private:
    float _heaterCurrentMaxA = WATER_BATH_HEATER_CURRENT_MAX_A;
    float _blockTempMaxC = WATER_BATH_BLOCK_TEMP_MAX_C;
 
+   float _disconnectedBathTemp = WATER_BATH_DISCONNECTED_BATH_TEMP;
+   float _disconnectedBlockTemp = WATER_BATH_DISCONNECTED_BLOCK_TEMP;
+
    float _kp = .15f;
    float _ki = 0.0003f;
    float _kd = 40.0f;
