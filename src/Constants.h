@@ -10,7 +10,7 @@
 #define CARRIAGE_DIR_PIN (GPIO_NUM_15)   // IO15 Direction
 #define CARRIAGE_ENABLE_PIN (GPIO_NUM_10) // IO10 Enable
 #define CARRIAGE_DIAG_PIN (GPIO_NUM_3)  // IO3 Diagnostic / StallGuard
-#define CARRIAGE_INVERT_DIRECTION (1)    // Inverts direction
+#define CARRIAGE_INVERT_DIRECTION (0)    // Inverts direction
 #define CARRIAGE_ACCEL (50)             // mm/s^2
 #define CARRIAGE_MM_PER_REV (2.0f)  // mm per revolution (steps/mm = MOTOR_STEPS_PER_REV * microsteps / pitch)
 // CARRIAGE_STEPS_PER_UNIT = MOTOR_STEPS_PER_REV × CARRIAGE_TMC_MICROSTEPS (defined in TMC section below)
@@ -22,7 +22,7 @@
 #define BATH_DIR_PIN (GPIO_NUM_35)   // IO35 Direction
 #define BATH_ENABLE_PIN (GPIO_NUM_38) // IO38 Enable
 #define BATH_DIAG_PIN (GPIO_NUM_37)  // IO37 Diagnostic / StallGuard
-#define BATH_INVERT_DIRECTION (1)    // Inverts direction
+#define BATH_INVERT_DIRECTION (0)    // Inverts direction
 #define BATH_ACCEL (200)             // mm/s^2
 #define BATH_STEPS_PER_UNIT (200)  // Steps per revolution (200 steps/rev for 1.8° motors) divided by mm per revolution (e.g. 4 mm/rev leads to 50 steps/mm)
 #define BATH_START_SPEED (500)       // mm/min
@@ -101,7 +101,7 @@ const double initialSpeed = 100;        // Initial speed in steps/sec
 // TMC2209 Configuration
 #define CARRIAGE_TMC_ADDRESS (0)  // UART address 0
 #define CARRIAGE_TMC_RSENSE (0.100f)
-#define CARRIAGE_TMC_RMS_CURRENT_MA (400)
+#define CARRIAGE_TMC_RMS_CURRENT_MA (800)
 #define CARRIAGE_TMC_MICROSTEPS (8)
 // Carriage steps per unit (e.g. per rev): physical steps/rev × microsteps. Runtime microsteps: main.cpp carriageMicroSteps (MachineParameter).
 #define CARRIAGE_STEPS_PER_UNIT (MOTOR_STEPS_PER_REV * CARRIAGE_TMC_MICROSTEPS)
@@ -109,7 +109,7 @@ const double initialSpeed = 100;        // Initial speed in steps/sec
 // TMC2209 Configuration
 #define BATH_TMC_ADDRESS (1)  // UART address 1
 #define BATH_TMC_RSENSE (0.100f)
-#define BATH_TMC_RMS_CURRENT_MA (400)
+#define BATH_TMC_RMS_CURRENT_MA (800)
 #define BATH_TMC_MICROSTEPS (16)
 
 // TMC2209 CHOPCONF MRES (datasheet): MRES 0 = 256 native; MRES 1..8 = 128,64,32,16,8,4,2,1 (2^MRES microsteps per step)

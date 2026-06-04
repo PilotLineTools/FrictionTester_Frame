@@ -43,6 +43,7 @@
 // ---------------------------------------------------------------------------
 extern MotionController *motionController;
 extern MachineParameter<uint16_t> carriageMicroSteps;
+extern MachineParameter<uint16_t> carriageRmsCurrentMa;
 extern TMC2209Driver *TMC2209_carriageDriver;
 extern Axis *carriageAxis;
 extern WaterBathController waterBathController;
@@ -83,6 +84,16 @@ void serialEvent(void)
          {
             carriageAxis->stepsPerUnit = (float)(MOTOR_STEPS_PER_REV * ms);
             USBSerial.printf("Carriage stepsPerUnit = %u (200 × %u)\n", (unsigned)(MOTOR_STEPS_PER_REV * ms), (unsigned)ms);
+         }
+      }
+      else if (c == 'c' || c == 'C')
+      {
+         // Carriage RMS current: set from serial, save to NVS, and push to driver immediately.
+         carriageRmsCurrentMa.setFromSerial();
+         if (TMC2209_carriageDriver != nullptr)
+         {
+            TMC2209_carriageDriver->setRmsCurrent(carriageRmsCurrentMa.value);
+            USBSerial.printf("Carriage RMS current set to %u mA\n", (unsigned)carriageRmsCurrentMa.value);
          }
       }
       else if (c == 'w' || c == 'W')
@@ -697,6 +708,12 @@ void setup()
    // 1) Early board bring-up and boot diagnostics
    initBoardAndDiagnostics();
 
+   // 2) Initialize machine parameters (NVS-backed)
+   // set bath current to 800
+   bathRmsCurrentMa.setValue(800);
+   // set carriage current to 800
+   carriageRmsCurrentMa.setValue(800);
+   
    // 2) Persistent machine parameters (NVS-backed)
    initMachineParameters();
 
