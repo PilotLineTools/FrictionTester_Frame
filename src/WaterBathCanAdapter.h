@@ -26,6 +26,8 @@
 // -----------------------------------------------------------------------------
 static const uint32_t CAN_ID_SET_WATER_BATH = 0x080u;
 static const uint32_t CAN_ID_BATH_STATUS    = 0x280u;
+static const uint32_t CAN_ID_BATH_PID1      = 0x314u;
+static const uint32_t CAN_ID_BATH_PID2      = 0x315u;
 
 // -----------------------------------------------------------------------------
 // WaterBathCanAdapter
@@ -43,7 +45,7 @@ public:
    void begin();
 
    /** Call from main loop; sends BATH_STATUS at configured rate (e.g. 5–10 Hz). */
-   void tick(uint32_t now_ms);
+   void tick();
 
    /** Gate: during FW_UPDATE, SET_WATER_TEMP is ignored (ACK with result=1). */
    void onModeChanged(SystemMode mode) { _mode = mode; }
@@ -66,6 +68,7 @@ private:
 
    void handleSetWaterBath(const twai_message_t *msg);
    void sendBathStatus();
+   void sendPidUpdate(float p, float i, float d, float error);
    void sendAck(uint8_t result, uint8_t detailCode);
 
    static void staticHandleSetWaterBath(const twai_message_t *msg, void *ctx);

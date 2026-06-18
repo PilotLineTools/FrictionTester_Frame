@@ -214,6 +214,7 @@ void WaterBathController::update()
       _integral = 0.0f;
       _lastError = 0.0f;
       _pidOutput = 0.0f;
+      _pidUpdatePending = false;
       _dutyAccum = 0.0f;
       _tempSlopeFiltered = 0.0f;
       _slopeInit = false;
@@ -227,6 +228,7 @@ void WaterBathController::update()
       _integral = 0.0f;
       _lastError = 0.0f;
       _pidOutput = 0.0f;
+      _pidUpdatePending = false;
       _dutyAccum = 0.0f;
       _tempSlopeFiltered = 0.0f;
       _slopeInit = false;
@@ -267,6 +269,7 @@ void WaterBathController::update()
          _dutyAccum = 0.0f;
          _integral = 0.0f;
          _lastError = 0.0f;
+         _pidUpdatePending = false;
          _tempSlopeFiltered = 0.0f;
          _slopeInit = false;
       }
@@ -284,6 +287,10 @@ void WaterBathController::update()
          // D term reduces output; when falling, it increases output.
          float dTerm = -_kd * _tempSlopeFiltered;
          _lastError = error;
+         _lastPTerm = pTerm;
+         _lastITerm = _integral;
+         _lastDTerm = dTerm;
+         _pidUpdatePending = true;
 
          _pidOutput = pTerm + _integral + dTerm;
          if (_pidOutput > 1.0f)
@@ -307,7 +314,7 @@ void WaterBathController::update()
          if (nowMs - _lastDebugMs >= 10000u)
          {
             _lastDebugMs = nowMs;
-            USBSerial.printf("%lu, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f\n",
+            USBSerial.printf("time: %lu, bathTemp: %.3f, P: %.3f, I: %.3f, slope: %.3f, D: %.3f, PID: %.3f\n",
                              (unsigned long)nowMs, _bathTempC, pTerm, _integral, _tempSlopeFiltered*1000.0f, dTerm, _pidOutput);
          }
       }
@@ -320,6 +327,19 @@ void WaterBathController::update()
    USBSerial.printf("WB FLOW ctrl check: current=%.3f A limits [%.3f, %.3f] A\n", _heaterCurrentA, _heaterCurrentMinA, _heaterCurrentMaxA);
    */
    _bathSensor->requestTemperatures();  // for next update()
+}
+
+bool WaterBathController::consumePidUpdate(float &pOut, float &iOut, float &dOut, float &errorOut)
+{
+   if (!_pidUpdatePending)
+      return false;
+
+   pOut = _lastPTerm;
+   iOut = _lastITerm;
+   dOut = _lastDTerm;
+   errorOut = _lastError;
+   _pidUpdatePending = false;
+   return true;
 }
 
 const char *WaterBathController::errorToString(WaterBathError code)

@@ -5,6 +5,7 @@
 
 #include "WaterBathCanAdapter.h"
 #include <algorithm>
+#include <cstring>
 
 WaterBathCanAdapter::WaterBathCanAdapter(WaterBathController *controller, ICanRouter *router, FrameESP_CanAdapter *frameCan)
    : _controller(controller),
@@ -19,14 +20,23 @@ void WaterBathCanAdapter::begin()
       _router->on(CAN_ID_SET_WATER_BATH, &WaterBathCanAdapter::staticHandleSetWaterBath, this);
 }
 
-void WaterBathCanAdapter::tick(uint32_t now_ms)
+void WaterBathCanAdapter::tick()
 {
    if (!_router || !_controller)
       return;
-   if (now_ms - _lastStatusMs >= _statusIntervalMs)
+
+   float pTerm = 0.0f;
+   float iTerm = 0.0f;
+   float dTerm = 0.0f;
+   float error = 0.0f;
+   if (_controller->consumePidUpdate(pTerm, iTerm, dTerm, error))
+      sendPidUpdate(pTerm, iTerm, dTerm, error);
+
+   const uint32_t nowMs = millis();
+   if (nowMs - _lastStatusMs >= _statusIntervalMs)
    {
       sendBathStatus();
-      _lastStatusMs = now_ms;
+      _lastStatusMs = nowMs;
    }
 }
 
@@ -169,6 +179,32 @@ void WaterBathCanAdapter::sendBathStatus()
 
    if (_router)
       _router->send(&tx);
+}
+
+void WaterBathCanAdapter::sendPidUpdate(float p, float i, float d, float error)
+{
+   if (!_router)
+      return;
+
+   twai_message_t tx1 = {};
+   tx1.identifier = CAN_ID_BATH_PID1;
+   tx1.data_length_code = 8;
+   tx1.flags = 0;
+   std::memcpy(&tx1.data[0], &p, sizeof(float));
+   std::memcpy(&tx1.data[4], &i, sizeof(float));
+
+   if (!_router->send(&tx1))
+      USBSerial.println("WB FLOW: PID1 send failed");
+
+   twai_message_t tx2 = {};
+   tx2.identifier = CAN_ID_BATH_PID2;
+   tx2.data_length_code = 8;
+   tx2.flags = 0;
+   std::memcpy(&tx2.data[0], &d, sizeof(float));
+   std::memcpy(&tx2.data[4], &error, sizeof(float));
+
+   if (!_router->send(&tx2))
+      USBSerial.println("WB FLOW: PID2 send failed");
 }
 
 void WaterBathCanAdapter::sendAck(uint8_t result, uint8_t detailCode)

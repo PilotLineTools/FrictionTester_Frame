@@ -91,6 +91,7 @@ public:
    /** Last PID output 0–1 (before threshold). For display/tuning. */
    float getHeaterDuty() const { return _pidOutput; }
    bool isHeaterOn() const { return _heaterOn; }
+   bool consumePidUpdate(float &pOut, float &iOut, float &dOut, float &errorOut);
 
    /** Configure circulator hardware controlled by this controller. */
    void setCirculatorHardware(Motor *motor, TMC2209Driver *driver);
@@ -124,6 +125,10 @@ private:
    float _integral = 0.0f;
    float _lastError = 0.0f;
    float _pidOutput = 0.0f;
+   float _lastPTerm = 0.0f;
+   float _lastITerm = 0.0f;
+   float _lastDTerm = 0.0f;
+   bool _pidUpdatePending = false;
    float _dutyAccum = 0.0f;   // Bresenham-style accumulator for duty-cycle heater (0–1 per 500 ms cycle)
    // Derivative-on-measurement state: filtered bath temperature slope (°C/s) over several minutes.
    float _tempSlopeFiltered = 0.0f;
@@ -131,7 +136,7 @@ private:
    bool  _slopeInit = false;
    uint32_t _lastDebugMs = 0; // throttled PID debug print timestamp
    static constexpr float _dt = 0.5f;        // update interval (s)
-   static constexpr float _integralMax = .30f;   // anti-windup
+   static constexpr float _integralMax = .75f;   // anti-windup
    static constexpr float _derivTauSec = 120.0f; // derivative filter time constant (s) 2 minutes
 
    float _bathTempC = 0.0f;

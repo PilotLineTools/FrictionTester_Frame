@@ -605,6 +605,7 @@ static void dispatchCanRx()
 
 static void tickCanAdapters()
 {
+   waterBathCanAdapter.tick();
    if (carriageCanAdapter)
       carriageCanAdapter->tick();
 }
