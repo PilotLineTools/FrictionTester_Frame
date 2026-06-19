@@ -114,8 +114,7 @@ void WaterBathController::enableHeater()
 
 void WaterBathController::disableHeater()
 {
-   _integral = 0.0f;
-   _lastError = 0.0f;
+   resetPidState("disableHeater", true, true);
    setHeaterOn(false);
 }
 
@@ -185,6 +184,41 @@ void WaterBathController::disableCirculator()
       _circulatorMotor->disable();
 }
 
+void WaterBathController::resetPidState(const char *reason, bool clearDutyAccum, bool clearSlopeState)
+{
+   const bool hadState = (fabsf(_integral) > 1e-6f) ||
+                         (fabsf(_pidOutput) > 1e-6f) ||
+                         _heaterOn ||
+                         (fabsf(_lastError) > 1e-6f) ||
+                         (clearDutyAccum && (fabsf(_dutyAccum) > 1e-6f));
+
+   if (_lastPidResetReason != reason || hadState)
+   {
+      USBSerial.printf("WB PID reset: reason=%s I=%.6f err=%.6f out=%.6f duty=%.6f heater=%u\n",
+                       reason ? reason : "unknown",
+                       _integral,
+                       _lastError,
+                       _pidOutput,
+                       _dutyAccum,
+                       (unsigned)_heaterOn);
+      _lastPidResetReason = reason;
+   }
+
+   _integral = 0.0f;
+   _lastError = 0.0f;
+   _pidOutput = 0.0f;
+   _pidUpdatePending = false;
+
+   if (clearDutyAccum)
+      _dutyAccum = 0.0f;
+
+   if (clearSlopeState)
+   {
+      _tempSlopeFiltered = 0.0f;
+      _slopeInit = false;
+   }
+}
+
 void WaterBathController::update()
 {
    applyCirculator();
@@ -211,13 +245,7 @@ void WaterBathController::update()
    if (_bathTempC <= _disconnectedBathTemp || _blockTempC <= _disconnectedBlockTemp )
    {
       _errorCode = WaterBathError::BathSensorDisconnected;
-      _integral = 0.0f;
-      _lastError = 0.0f;
-      _pidOutput = 0.0f;
-      _pidUpdatePending = false;
-      _dutyAccum = 0.0f;
-      _tempSlopeFiltered = 0.0f;
-      _slopeInit = false;
+      resetPidState("fault:bath_or_block_disconnected", true, true);
       setHeaterOn(false);
    }
 
@@ -225,13 +253,7 @@ void WaterBathController::update()
    else if (_heaterCurrentA > _heaterCurrentMaxA)
    {
       _errorCode = WaterBathError::HeaterCurrentHigh;
-      _integral = 0.0f;
-      _lastError = 0.0f;
-      _pidOutput = 0.0f;
-      _pidUpdatePending = false;
-      _dutyAccum = 0.0f;
-      _tempSlopeFiltered = 0.0f;
-      _slopeInit = false;
+      resetPidState("fault:heater_current_high", true, true);
       setHeaterOn(false);
    }
 
@@ -265,16 +287,11 @@ void WaterBathController::update()
       if (!_heaterRequestEnabled)
       {
          _heaterOn = false;
-         _pidOutput = 0.0f;
-         _dutyAccum = 0.0f;
-         _integral = 0.0f;
-         _lastError = 0.0f;
-         _pidUpdatePending = false;
-         _tempSlopeFiltered = 0.0f;
-         _slopeInit = false;
+         resetPidState("heater_request_disabled", true, true);
       }
       else
       {
+         _lastPidResetReason = nullptr;
          // PID: error positive = below target, need heating
          float error = _targetTempC - _bathTempC;
          float pTerm = _kp * error;
@@ -283,6 +300,7 @@ void WaterBathController::update()
             _integral = _integralMax;
          else if (_integral < 0)
             _integral = 0;
+
          // Derivative on measurement: when temperature is rising (positive slope),
          // D term reduces output; when falling, it increases output.
          float dTerm = -_kd * _tempSlopeFiltered;

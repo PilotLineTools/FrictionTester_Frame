@@ -151,7 +151,7 @@ const double initialSpeed = 100;        // Initial speed in steps/sec
 
 // Water bath controller limits (tunable; heater shuts down and reports error if exceeded)
 #define WATER_BATH_HEATER_CURRENT_MIN_A (6.0f)   // Below this = fault (e.g. open circuit)
-#define WATER_BATH_HEATER_CURRENT_MAX_A (7.0f)   // Above this = fault (e.g. short)
+#define WATER_BATH_HEATER_CURRENT_MAX_A (8.0f)   // Above this = fault (e.g. short)
 #define WATER_BATH_BLOCK_TEMP_MAX_C (45.0f)      // Heater block overtemp limit (°C)
 #define WATER_BATH_DISCONNECTED_BATH_TEMP ( -127.0f ) // Bath sensor disconnected
 #define WATER_BATH_DISCONNECTED_BLOCK_TEMP ( -100.0f ) // Block thermistor disconnected
