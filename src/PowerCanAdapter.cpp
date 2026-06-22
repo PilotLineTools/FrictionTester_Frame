@@ -205,20 +205,21 @@ void PowerCanAdapter::sendPowerStatus(uint8_t eventCode)
 
    tx.data[0] = _power->getGuiPowerStateCode();
    tx.data[1] = flags;
-   tx.data[2] = 0;
+   tx.data[2] = eventCode;
    tx.data[3] = 0;
    tx.data[4] = 0;
    tx.data[5] = 0;
    tx.data[6] = 0;
    tx.data[7] = 0;
    
-   // USBSerial.printf("PowerCanAdapter: send state code=%u\n", (unsigned)tx.data[0]);
-   // USBSerial.printf("PowerCanAdapter: send flags=0x%02X (button=%u gui=%u hold=%u pi_can=%u)\n",
-   //                  (unsigned)flags,
-   //                  (unsigned)((flags & 0x01) != 0),
-   //                  (unsigned)((flags & 0x02) != 0),
-   //                  (unsigned)((flags & 0x04) != 0),
-   //                  (unsigned)((flags & 0x08) != 0));
+   USBSerial.printf("PowerCanAdapter: send 0x281 state=%u event=%u flags=0x%02X (button=%u gui=%u hold=%u pi_can=%u)\n",
+                    (unsigned)tx.data[0],
+                    (unsigned)tx.data[2],
+                    (unsigned)flags,
+                    (unsigned)((flags & 0x01) != 0),
+                    (unsigned)((flags & 0x02) != 0),
+                    (unsigned)((flags & 0x04) != 0),
+                    (unsigned)((flags & 0x08) != 0));
    
    _router->send(&tx);
 }
