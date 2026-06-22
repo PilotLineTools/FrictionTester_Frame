@@ -554,6 +554,26 @@ static void processWaterBathUpdate(uint32_t nowMs, bool &needWaterBathUpdate)
    waterBathController.update();
 }
 
+static void recoverTwaiIfNeeded()
+{
+   twai_status_info_t status = {};
+   if (twai_get_status_info(&status) != ESP_OK)
+      return;
+
+   if (status.state == TWAI_STATE_BUS_OFF)
+   {
+      USBSerial.println("CAN recovery: bus-off, initiating TWAI recovery");
+      twai_initiate_recovery();
+      return;
+   }
+
+   if (status.state == TWAI_STATE_STOPPED)
+   {
+      USBSerial.println("CAN recovery: TWAI stopped, restarting");
+      twai_start();
+   }
+}
+
 static void tickHeartbeatTx(uint32_t nowMs)
 {
    static uint32_t lastHeartbeatMs = 0;
@@ -761,6 +781,7 @@ void loop()
    processWaterBathUpdate(nowMs, needWaterBathUpdate);
 
    // 6) Frame heartbeat TX.
+   recoverTwaiIfNeeded();
    tickHeartbeatTx(nowMs);
 
    // 7) Dispatch inbound CAN frames.
