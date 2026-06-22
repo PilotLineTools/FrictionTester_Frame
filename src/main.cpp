@@ -306,7 +306,7 @@ static void initBoardAndDiagnostics()
    // Latch frame power as early as possible so the user
    // does not need to hold the power button through full boot.
    pinMode(POWER_HOLD_PIN, OUTPUT);
-   //digitalWrite(POWER_HOLD_PIN, HIGH);
+   digitalWrite(POWER_HOLD_PIN, HIGH);
 
    // Basic safety on critical outputs before heavier init.
    pinMode(HEATER_FET_PIN, OUTPUT);

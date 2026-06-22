@@ -1,4 +1,5 @@
 #include "FrameESP_CanAdapter.h"
+#include "Constants.h"
 #include "version.h"
 #include <Arduino.h>
 #include <algorithm>
@@ -343,6 +344,8 @@ void FrameESP_CanAdapter::handleFwEnd(const twai_message_t *msg)
    setMode(SystemMode::NORMAL);
    sendAck(0, 0);
    sendFwStatus(2, 0, lastSeq);
+   pinMode(POWER_HOLD_PIN, OUTPUT);
+   digitalWrite(POWER_HOLD_PIN, HIGH);
    delay(100);
    esp_restart();
 }

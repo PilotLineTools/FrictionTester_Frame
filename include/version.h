@@ -11,7 +11,7 @@
 // - PATCH: bug fixes or small safe changes that keep existing behavior compatible
 #define VERSION_MAJOR 1
 #define VERSION_MINOR 0
-#define VERSION_PATCH 0
+#define VERSION_PATCH 1
 
 // Build date and time
 #define BUILD_DATE __DATE__
