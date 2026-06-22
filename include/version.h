@@ -1,7 +1,12 @@
 #ifndef VERSION_H
 #define VERSION_H
 
-// Software version
+#include <stdint.h>
+
+// Software version: MAJOR.MINOR.PATCH
+// - MAJOR: breaking protocol/behavior changes that may require Pi-side updates
+// - MINOR: backward-compatible features, such as new CAN messages or telemetry
+// - PATCH: bug fixes or small safe changes that keep existing behavior compatible
 #define VERSION_MAJOR 1
 #define VERSION_MINOR 0
 #define VERSION_PATCH 2
@@ -16,5 +21,10 @@
 
 // Full version string
 #define VERSION_STRING TOSTRING(VERSION_MAJOR) "." TOSTRING(VERSION_MINOR) "." TOSTRING(VERSION_PATCH)
+
+static constexpr uint8_t FIRMWARE_VERSION_MAJOR = VERSION_MAJOR;
+static constexpr uint8_t FIRMWARE_VERSION_MINOR = VERSION_MINOR;
+static constexpr uint8_t FIRMWARE_VERSION_PATCH = VERSION_PATCH;
+static constexpr const char *FIRMWARE_VERSION_STRING = VERSION_STRING;
 
 #endif // VERSION_H

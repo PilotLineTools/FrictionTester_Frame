@@ -111,7 +111,7 @@ void serialEvent(void)
 // ---------------------------------------------------------------------------
 // State and globals
 // ---------------------------------------------------------------------------
-char swVer[8];
+static const char *swVer = FIRMWARE_VERSION_STRING;
 static int potFiltered = 0;       // Latest filtered ADC; updated in timer3Didtic
 static bool motorOn = false;      // Start button toggles this (motor run when true)
 volatile bool timer3Didtic = false;
@@ -317,7 +317,6 @@ static void initBoardAndDiagnostics()
    pcbHealthLed.begin();
    pcbHealthLed.setState(HealthLedState::Fault);
 
-   strcpy(swVer, VERSION_STRING);
    delay(1000);
    USBSerial.print("Version: ");
    USBSerial.println(swVer);
@@ -497,6 +496,8 @@ static void initTwai()
       // are initialized even when a switch is already active at startup.
       carriageCanAdapter->requestLimitStatus();
    }
+   if (twaiStarted)
+      espCanAdapter.sendFirmwareVersion(0);
 }
 
 static void tickHealthLed(uint32_t nowMs)

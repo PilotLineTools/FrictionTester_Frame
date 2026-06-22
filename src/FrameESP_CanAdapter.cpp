@@ -1,4 +1,5 @@
 #include "FrameESP_CanAdapter.h"
+#include "version.h"
 #include <Arduino.h>
 #include <algorithm>
 #include <cstring>
@@ -76,6 +77,27 @@ void FrameESP_CanAdapter::sendHeartbeat(float waterC, float blockC, float curren
    _router->send(&tx);
 }
 
+void FrameESP_CanAdapter::sendFirmwareVersion(uint8_t seqEcho)
+{
+   if (!_router)
+      return;
+
+   twai_message_t tx = {};
+   tx.identifier = FRAME_ESP_CAN_ID_VERSION;
+   tx.data_length_code = 8;
+   tx.flags = 0;
+   tx.data[0] = FIRMWARE_VERSION_MAJOR;
+   tx.data[1] = FIRMWARE_VERSION_MINOR;
+   tx.data[2] = FIRMWARE_VERSION_PATCH;
+   tx.data[3] = seqEcho;
+   tx.data[4] = 0;
+   tx.data[5] = 0;
+   tx.data[6] = 0;
+   tx.data[7] = 0;
+
+   _router->send(&tx);
+}
+
 bool FrameESP_CanAdapter::consumeModeChange(SystemMode &modeOut)
 {
    if (!_modeChanged)
@@ -146,6 +168,7 @@ void FrameESP_CanAdapter::handlePingRequest(const twai_message_t *msg)
    uint8_t seq = msg->data[0];
    USBSerial.printf("FRAME: PING_REQUEST seq=%u\n", (unsigned)seq);
    sendAck(0, 0);
+   sendFirmwareVersion(seq);
 }
 
 void FrameESP_CanAdapter::handleFwStart(const twai_message_t *msg)

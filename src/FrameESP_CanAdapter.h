@@ -13,6 +13,7 @@
 
 static const uint32_t FRAME_ESP_CAN_ID_HEARTBEAT = 0x013u;
 static const uint32_t FRAME_ESP_CAN_ID_ACK = 0x282u;
+static const uint32_t FRAME_ESP_CAN_ID_VERSION = 0x283u;
 static const uint32_t FRAME_ESP_CAN_ID_PING_REQUEST = 0x0E0u;
 static const uint32_t FRAME_ESP_CAN_ID_FW_START = 0x0F0u;
 static const uint32_t FRAME_ESP_CAN_ID_FW_END = 0x0F1u;
@@ -29,6 +30,7 @@ public:
    /** Sends ACK with auto-incrementing sequence. */
    void sendAck(uint8_t result, uint8_t detailCode);
    void sendHeartbeat(float waterC, float blockC, float currentA, bool heaterOn, bool enabled);
+   void sendFirmwareVersion(uint8_t seqEcho);
    bool consumeModeChange(SystemMode &modeOut);
 
 private:
