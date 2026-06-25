@@ -76,6 +76,7 @@ private:
     uint16_t _powerButtonPressedCounter = 0; // how many short presses
     uint16_t _powerButtonPowerOffTimerMs = 0;
     bool _longPressHandled = false;
+    bool _buttonShutdownArmed = false;
     uint32_t _lastGuiHeartbeatMs = 0;
     bool _guiHeartbeatSeen = false;
 

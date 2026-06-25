@@ -21,7 +21,7 @@ PowerController::PowerController()
     pinMode(POWER_HOLD_PIN, OUTPUT);
     digitalWrite(POWER_HOLD_PIN, HIGH); // latch power on at boot
 
-    pinMode(POWER_BUTTON_SIGNAL, INPUT);
+    pinMode(POWER_BUTTON_SIGNAL, INPUT_PULLUP);
 }
 
 void PowerController::poll10ms()
@@ -30,12 +30,41 @@ void PowerController::poll10ms()
     _powerButtonPressTimerMs += 10;
 
     // Button assumed active LOW (pressed when reading LOW)
-    _powerButtonIsPushed = (digitalRead(POWER_BUTTON_SIGNAL) == LOW) ? 1 : 0;
+    const int rawPowerButton = digitalRead(POWER_BUTTON_SIGNAL);
+    const int rawGuiSignal = digitalRead(GUI_SHUTDOWN_PIN);
+    _powerButtonIsPushed = (rawPowerButton == LOW) ? 1 : 0;
     bool guiOn = isGuiSignalOn();
 
+    static uint32_t lastRawPinDebugMs = 0;
+    const uint32_t nowMs = millis();
+    if (nowMs - lastRawPinDebugMs >= 1000)
+    {
+        USBSerial.printf("power button raw=%d gui raw=%d state=%u armed=%u\n",
+                         rawPowerButton,
+                         rawGuiSignal,
+                         getGuiPowerStateCode(),
+                         (unsigned)_buttonShutdownArmed);
+        lastRawPinDebugMs = nowMs;
+    }
+
+    if (!_buttonShutdownArmed)
+    {
+        if (!_powerButtonIsPushed)
+        {
+            _buttonShutdownArmed = true;
+        }
+        else
+        {
+            _powerButtonPressTimerMs = 0;
+            _powerButtonPowerOffTimerMs = 0;
+            _powerButtonPressedCounter = 0;
+            _longPressHandled = false;
+        }
+    }
+
     // Button edge/hold debug (runs regardless of GUI power state)
-    const bool justPressed  = (_powerButtonIsPushed && !_previousPowerButtonIsPushed);
-    const bool justReleased = (!_powerButtonIsPushed && _previousPowerButtonIsPushed);
+    const bool justPressed = (_buttonShutdownArmed && _powerButtonIsPushed && !_previousPowerButtonIsPushed);
+    const bool justReleased = (_buttonShutdownArmed && !_powerButtonIsPushed && _previousPowerButtonIsPushed);
 
     if (justPressed)
     {
@@ -43,7 +72,7 @@ void PowerController::poll10ms()
         _powerButtonPressTimerMs = 0;
     }
 
-    if (_powerButtonIsPushed)
+    if (_buttonShutdownArmed && _powerButtonIsPushed)
     {
         _powerButtonPowerOffTimerMs += 10;
 

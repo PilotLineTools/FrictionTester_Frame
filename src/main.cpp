@@ -282,7 +282,7 @@ static void logCanRxFrame(const twai_message_t &msg)
    if (!canRouter.handles(id))
       return;
    
-   if (id == CAN_ID_SET_POWER || id == CAN_ID_GUI_HEARTBEAT || id == CAN_ID_CLEAR_FAULT || id == CAN_ID_SHUTDOWN_REQUEST || id == CAN_ID_CARRIAGE_HEARTBEAT)
+   if ( id == CAN_ID_GUI_HEARTBEAT || id == CAN_ID_CARRIAGE_HEARTBEAT)
    {
       // These are expected to be sent frequently by the GUI; skip logging to avoid spamming the console.
       return;
