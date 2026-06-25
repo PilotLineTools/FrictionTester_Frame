@@ -77,6 +77,7 @@ private:
     uint16_t _powerButtonPowerOffTimerMs = 0;
     bool _longPressHandled = false;
     bool _buttonShutdownArmed = false;
+    uint32_t _shutdownRequestedMs = 0;
     uint32_t _lastGuiHeartbeatMs = 0;
     bool _guiHeartbeatSeen = false;
 

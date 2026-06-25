@@ -15,6 +15,7 @@
 static constexpr uint16_t POWER_BUTTON_PRESS_TIMEOUT_MS = 100;   // timeout between short presses
 static constexpr uint16_t POWER_BUTTON_HOLD_OFF_TIME_MS = 2000; // hold to request shutdown
 static constexpr uint32_t PI_CAN_HEARTBEAT_TIMEOUT_MS = 3000;    // 1 s heartbeat + jitter margin
+static constexpr uint32_t GUI_SHUTDOWN_GRACE_MS = 30000;         // fallback if GUI signal never changes
 
 PowerController::PowerController()
 {
@@ -91,6 +92,7 @@ void PowerController::poll10ms()
                 if (_guiPowerState != GuiPowerState::SHUTTING_DOWN)
                 {
                     _guiPowerState = GuiPowerState::SHUTTING_DOWN;
+                    _shutdownRequestedMs = nowMs;
                     emit(Notification::ShutdownRequested);
                 }
             }
@@ -157,13 +159,21 @@ void PowerController::poll10ms()
         break;
 
     case GuiPowerState::SHUTTING_DOWN:
-        // Wait for GUI to power off (GUI_SHUTDOWN_PIN HIGH) before cutting frame power
-        if (!guiOn)
+    {
+        const bool piCanTimedOut = _guiHeartbeatSeen && !isPiCanAliveNow();
+        const bool shutdownTimedOut = (_shutdownRequestedMs != 0 &&
+                                       nowMs - _shutdownRequestedMs >= GUI_SHUTDOWN_GRACE_MS);
+
+        if (!guiOn || piCanTimedOut || shutdownTimedOut)
         {
-            USBSerial.println("GUI off. Cutting main power.");
+            USBSerial.printf("GUI shutdown complete (%s). Cutting main power.\n",
+                             !guiOn ? "gui signal off" :
+                             piCanTimedOut ? "pi can timeout" :
+                             "shutdown timeout");
             _guiPowerState = GuiPowerState::SHUT_DOWN;
         }
         break;
+    }
 
     case GuiPowerState::SHUT_DOWN:
         digitalWrite(POWER_HOLD_PIN, LOW); // cut power
@@ -182,6 +192,7 @@ void PowerController::requestShutdownFromRemote()
     {
         emit(Notification::ShutdownRequested);
         _guiPowerState = GuiPowerState::SHUT_DOWN;
+        _shutdownRequestedMs = 0;
         return;
     }
 
@@ -189,6 +200,7 @@ void PowerController::requestShutdownFromRemote()
         _guiPowerState != GuiPowerState::SHUT_DOWN)
     {
         _guiPowerState = GuiPowerState::SHUTTING_DOWN;
+        _shutdownRequestedMs = millis();
         emit(Notification::ShutdownRequested);
     }
 }
@@ -242,6 +254,10 @@ bool PowerController::setGuiPowerStateCode(uint8_t code)
     case GuiPowerState::SHUTTING_DOWN:
     case GuiPowerState::SHUT_DOWN:
         _guiPowerState = static_cast<GuiPowerState>(code);
+        if (_guiPowerState == GuiPowerState::SHUTTING_DOWN)
+            _shutdownRequestedMs = millis();
+        else
+            _shutdownRequestedMs = 0;
         return true;
     default:
         return false;
